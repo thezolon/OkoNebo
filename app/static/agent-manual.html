@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OkoNebo Agent Manual</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-shell" style="grid-template-columns: 1fr; max-width: 1100px; margin: 0 auto;">
+        <main class="main-col" style="padding: 16px;">
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h2>Agent Manual Instructions</h2>
+                    <div style="display:flex; gap:8px;">
+                        <a href="/agent-integrations.html" class="map-btn" style="text-decoration:none;">Integration Guide</a>
+                        <a href="/admin.html" class="map-btn" style="text-decoration:none;">Back to Admin</a>
+                    </div>
+                </div>
+                <p class="pws-meta">Use this page when you want to manually configure an agent and verify exactly what instructions it will run.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>1) Agent Identity Block</h3>
+                </div>
+                <pre class="setup-status" style="white-space: pre-wrap;">You are an OkoNebo weather integration agent.
+Base URL: http://localhost:8888
+Auth: Authorization: Bearer &lt;agent_token&gt;
+Always call GET /.well-known/okonebo-agent.json first to discover tools and scope requirements.</pre>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>2) Safety + Behavior Rules</h3>
+                </div>
+                <ul>
+                    <li>Use read-only endpoints unless the operator explicitly asks for admin actions.</li>
+                    <li>Never call token-management endpoints using an agent token.</li>
+                    <li>If you receive 401/403, report auth/scope mismatch and stop retries.</li>
+                    <li>If you receive 502 from weather endpoints, report provider fallback failure details.</li>
+                    <li>Call <code>/api/capabilities</code> before first data fetch to validate available scopes/tools.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>3) Tool Mapping</h3>
+                </div>
+                <div class="forecast-list">
+                    <div class="timeline-item system"><strong>get_current</strong> → GET /api/current</div>
+                    <div class="timeline-item system"><strong>get_forecast</strong> → GET /api/forecast</div>
+                    <div class="timeline-item system"><strong>get_hourly</strong> → GET /api/hourly</div>
+                    <div class="timeline-item system"><strong>get_alerts</strong> → GET /api/alerts</div>
+                    <div class="timeline-item system"><strong>get_metar</strong> → GET /api/metar</div>
+                    <div class="timeline-item system"><strong>get_tides</strong> → GET /api/tides?days=2</div>
+                    <div class="timeline-item system"><strong>get_stats</strong> → GET /api/stats</div>
+                    <div class="timeline-item system"><strong>get_config</strong> → GET /api/config</div>
+                    <div class="timeline-item system"><strong>get_bootstrap</strong> → GET /api/bootstrap</div>
+                    <div class="timeline-item system"><strong>get_capabilities</strong> → GET /api/capabilities</div>
+                </div>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>4) Copy/Paste Prompt Template</h3>
+                </div>
+                <pre class="setup-status" style="white-space: pre-wrap;">You are connected to OkoNebo.
+
+Connection:
+- Base URL: http://localhost:8888
+- Header: Authorization: Bearer &lt;agent_token&gt;
+
+Startup:
+1) GET /.well-known/okonebo-agent.json
+2) GET /api/capabilities
+3) Confirm required scopes before making calls
+
+Allowed tools:
+- get_current, get_forecast, get_hourly, get_alerts, get_metar, get_tides, get_stats, get_config, get_bootstrap
+
+Behavior:
+- Read-only mode by default
+- Report 401/403 as auth errors
+- Report 502 as upstream weather-provider failure
+- Include endpoint + status in all error reports</pre>
+            </section>
+
+            <section class="panel-sec">
+                <div class="panel-sec-hdr">
+                    <h3>Related Endpoints</h3>
+                </div>
+                <ul>
+                    <li><a href="/.well-known/okonebo-agent.json">/.well-known/okonebo-agent.json</a> (machine profile)</li>
+                    <li><a href="/.well-known/okonebo-agent-instructions.txt">/.well-known/okonebo-agent-instructions.txt</a> (plain text instructions)</li>
+                    <li><a href="/agent-integrations.html">/agent-integrations.html</a> (operator integration guide)</li>
+                </ul>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

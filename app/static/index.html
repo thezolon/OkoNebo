@@ -201,54 +201,13 @@
                 </div>
             </section>
 
-            <section class="panel-sec" id="setup-section">
+            <section class="panel-sec" id="admin-section">
                 <div class="panel-sec-hdr">
-                    <h3>Setup</h3>
-                    <button id="setup-toggle-btn" class="map-btn debug-btn" type="button">Show</button>
+                    <h3>Admin</h3>
                 </div>
-                <div id="setup-body" class="setup-body hidden">
-                    <div class="setup-grid">
-                        <div class="setup-row"><span class="setup-lbl">Home Label</span><input id="setup-home-label" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Home Lat</span><input id="setup-home-lat" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Home Lon</span><input id="setup-home-lon" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Work Label</span><input id="setup-work-label" class="setup-input" type="text" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Work Lat</span><input id="setup-work-lat" class="setup-input" type="text" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Work Lon</span><input id="setup-work-lon" class="setup-input" type="text" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Timezone</span><input id="setup-timezone" class="setup-input" type="text" placeholder="America/Chicago"></div>
-                        <div class="setup-row"><span class="setup-lbl">User Agent</span><input id="setup-user-agent" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Map Provider</span><select id="setup-map-provider" class="setup-input"><option value="esri_street">Esri Street</option><option value="osm">OpenStreetMap</option><option value="carto_light">CARTO Light</option><option value="carto_dark">CARTO Dark</option></select></div>
-                        <div class="setup-row"><span class="setup-lbl">PWS Provider</span><input id="setup-pws-provider" class="setup-input" type="text" placeholder="weather.com"></div>
-                        <div class="setup-row"><span class="setup-lbl">PWS Station IDs</span><input id="setup-pws-stations" class="setup-input" type="text" placeholder="ID1,ID2"></div>
-
-                        <div class="setup-row"><span class="setup-lbl">NWS</span><label class="ctrl-lbl"><input id="setup-provider-nws-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">OpenWeather</span><label class="ctrl-lbl"><input id="setup-provider-openweather-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">OWM API Key</span><input id="setup-provider-openweather-key" class="setup-input" type="password" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">PWS</span><label class="ctrl-lbl"><input id="setup-provider-pws-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">PWS API Key</span><input id="setup-provider-pws-key" class="setup-input" type="password" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Tomorrow.io</span><label class="ctrl-lbl"><input id="setup-provider-tomorrow-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">Tomorrow Key</span><input id="setup-provider-tomorrow-key" class="setup-input" type="password" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Meteomatics</span><label class="ctrl-lbl"><input id="setup-provider-meteomatics-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">Meteomatics Key</span><input id="setup-provider-meteomatics-key" class="setup-input" type="password" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">WeatherAPI</span><label class="ctrl-lbl"><input id="setup-provider-weatherapi-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">WeatherAPI Key</span><input id="setup-provider-weatherapi-key" class="setup-input" type="password" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Visual Crossing</span><label class="ctrl-lbl"><input id="setup-provider-visualcrossing-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">Visual Crossing Key</span><input id="setup-provider-visualcrossing-key" class="setup-input" type="password" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">AviationWeather</span><label class="ctrl-lbl"><input id="setup-provider-aviationweather-enabled" type="checkbox"> Enable</label></div>
-                        <div class="setup-row"><span class="setup-lbl">NOAA Tides</span><label class="ctrl-lbl"><input id="setup-provider-noaa_tides-enabled" type="checkbox"> Enable</label></div>
-
-                        <div class="setup-row"><span class="setup-lbl">Enable Auth</span><label class="ctrl-lbl"><input id="setup-auth-enabled" type="checkbox"> Auth system enabled</label></div>
-                        <div class="setup-row"><span class="setup-lbl">Viewer Login</span><label class="ctrl-lbl"><input id="setup-auth-viewer-required" type="checkbox"> Require viewer login</label></div>
-                        <div class="setup-row"><span class="setup-lbl">Admin User</span><input id="setup-auth-admin-user" class="setup-input" type="text" placeholder="admin"></div>
-                        <div class="setup-row"><span class="setup-lbl">Admin Password</span><input id="setup-auth-admin-pass" class="setup-input" type="password" placeholder="leave blank to keep"></div>
-                        <div class="setup-row"><span class="setup-lbl">Viewer User</span><input id="setup-auth-viewer-user" class="setup-input" type="text" placeholder="viewer"></div>
-                        <div class="setup-row"><span class="setup-lbl">Viewer Password</span><input id="setup-auth-viewer-pass" class="setup-input" type="password" placeholder="optional"></div>
-                    </div>
-                    <div class="setup-actions">
-                        <button id="setup-admin-login-btn" class="map-btn" type="button">Admin Login</button>
-                        <button id="setup-admin-logout-btn" class="map-btn" type="button">Logout</button>
-                        <button id="setup-save-btn" class="btn-refresh" type="button">Save Settings</button>
-                    </div>
-                    <div id="setup-status" class="setup-status">Config from local server</div>
+                <p class="pws-meta">Setup, auth, and AI agent tokens now live on a dedicated admin page.</p>
+                <div class="setup-actions">
+                    <a href="/admin.html" class="btn-refresh" style="text-align:center; text-decoration:none;">Open Admin Page</a>
                 </div>
             </section>
 
@@ -324,7 +283,7 @@
     <div id="firstrun-overlay" class="firstrun-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="firstrun-title">
         <div class="firstrun-card">
             <div class="firstrun-header">
-                <h2 id="firstrun-title" class="firstrun-title">Welcome to Storm Dashboard</h2>
+                <h2 id="firstrun-title" class="firstrun-title">Welcome to OkoNebo</h2>
                 <p class="firstrun-subtitle">Complete setup to activate your weather station.</p>
             </div>
             <div class="firstrun-body">

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OkoNebo AI Integration Guide</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-shell" style="grid-template-columns: 1fr; max-width: 1100px; margin: 0 auto;">
+        <main class="main-col" style="padding: 16px;">
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h2>AI Integration Guide</h2>
+                    <div style="display:flex; gap:8px;">
+                        <a href="/admin.html" class="map-btn" style="text-decoration:none;">Back to Admin</a>
+                        <a href="/" class="map-btn" style="text-decoration:none;">Dashboard</a>
+                    </div>
+                </div>
+                <p class="pws-meta">Use OkoNebo as a weather source for AI agents using MCP, ACP, or direct REST.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>Two Ways To Integrate</h3>
+                </div>
+                <div class="forecast-list" style="margin-bottom: 12px;">
+                    <div class="timeline-item system"><strong>Auto-config profile</strong> (for agent runtimes): <code>/.well-known/okonebo-agent.json</code></div>
+                    <div class="timeline-item system"><strong>Manual instructions</strong> (for humans): <a href="/agent-manual.html">/agent-manual.html</a></div>
+                    <div class="timeline-item system"><strong>Plain-text prompt block</strong> (copy/paste): <code>/.well-known/okonebo-agent-instructions.txt</code></div>
+                </div>
+                <p class="pws-meta">Use auto-config when possible. Use manual mode when you want to inspect or customize every instruction.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>Step 1: Create an Agent Token</h3>
+                </div>
+                <ol>
+                    <li>Open <strong>Admin → AI Agent Tokens</strong>.</li>
+                    <li>Create a token with only the scopes your agent needs.</li>
+                    <li>Copy the token immediately (shown once).</li>
+                </ol>
+                <p class="pws-meta">Recommended default scopes: <code>weather.read</code>, <code>config.read</code>, <code>stats.read</code>.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>MCP (Model Context Protocol)</h3>
+                </div>
+                <p>The repository includes an MCP adapter at <code>scripts/mcp_server.py</code>.</p>
+                <pre class="setup-status" style="white-space: pre-wrap;">
+export OKONEBO_BASE_URL=http://localhost:8888
+export OKONEBO_AGENT_TOKEN=&lt;your_agent_token&gt;
+python scripts/mcp_server.py
+                </pre>
+                <p class="pws-meta">Exposed tools: get_current, get_forecast, get_hourly, get_alerts, get_metar, get_tides, get_stats, get_config, get_bootstrap, get_capabilities.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>ACP (Agent Communication Protocol / OpenClaw)</h3>
+                </div>
+                <p>Use the same token model and endpoint map as MCP. Start with read-only weather tools.</p>
+                <pre class="setup-status" style="white-space: pre-wrap;">
+Base URL: http://localhost:8888
+Auth: Authorization: Bearer &lt;agent_token&gt;
+Capabilities endpoint: GET /api/capabilities
+                </pre>
+                <p class="pws-meta">If your ACP runtime supports custom tool definitions, map each tool to the REST endpoints listed below.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>Direct REST (Any Agent Framework)</h3>
+                </div>
+                <p>All major frameworks can call these endpoints directly with bearer auth.</p>
+                <div class="forecast-list">
+                    <div class="timeline-item system"><strong>GET /api/current</strong> - current observations</div>
+                    <div class="timeline-item system"><strong>GET /api/forecast</strong> - multi-day forecast</div>
+                    <div class="timeline-item system"><strong>GET /api/hourly</strong> - hourly forecast</div>
+                    <div class="timeline-item system"><strong>GET /api/alerts</strong> - active weather alerts</div>
+                    <div class="timeline-item system"><strong>GET /api/metar</strong> - aviation METAR</div>
+                    <div class="timeline-item system"><strong>GET /api/tides?days=2</strong> - tide predictions</div>
+                    <div class="timeline-item system"><strong>GET /api/stats</strong> - provider call counters</div>
+                    <div class="timeline-item system"><strong>GET /api/config</strong> - location/config metadata</div>
+                    <div class="timeline-item system"><strong>GET /api/bootstrap</strong> - first-run/auth state</div>
+                    <div class="timeline-item system"><strong>GET /api/capabilities</strong> - tool + scope map</div>
+                </div>
+            </section>
+
+            <section class="panel-sec">
+                <div class="panel-sec-hdr">
+                    <h3>Security Recommendations</h3>
+                </div>
+                <ul>
+                    <li>Issue one token per agent system (do not share tokens).</li>
+                    <li>Use minimum scopes only.</li>
+                    <li>Rotate tokens on schedule or when users/services change.</li>
+                    <li>Revoke immediately if compromised.</li>
+                    <li>Keep OkoNebo private behind your network/VPN when possible.</li>
+                </ul>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

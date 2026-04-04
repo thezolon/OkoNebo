@@ -2603,27 +2603,40 @@ async function logoutSession() {
 function setupControls() {
     _wireFirstRunOverlay();
 
-    document.getElementById('setup-toggle-btn').addEventListener('click', async () => {
-        const body = document.getElementById('setup-body');
-        const btn = document.getElementById('setup-toggle-btn');
-        const hidden = body.classList.toggle('hidden');
-        btn.textContent = hidden ? 'Show' : 'Hide';
-        if (!hidden) {
-            await loadSetupSettings();
-        }
-    });
+    const setupToggleBtn = document.getElementById('setup-toggle-btn');
+    if (setupToggleBtn) {
+        setupToggleBtn.addEventListener('click', async () => {
+            const body = document.getElementById('setup-body');
+            const btn = document.getElementById('setup-toggle-btn');
+            if (!body || !btn) return;
+            const hidden = body.classList.toggle('hidden');
+            btn.textContent = hidden ? 'Show' : 'Hide';
+            if (!hidden) {
+                await loadSetupSettings();
+            }
+        });
+    }
 
-    document.getElementById('setup-save-btn').addEventListener('click', async () => {
-        await saveSetupSettings();
-    });
+    const setupSaveBtn = document.getElementById('setup-save-btn');
+    if (setupSaveBtn) {
+        setupSaveBtn.addEventListener('click', async () => {
+            await saveSetupSettings();
+        });
+    }
 
-    document.getElementById('setup-admin-login-btn').addEventListener('click', () => {
-        openAuthModal('Admin login is required when auth is enabled.');
-    });
+    const setupAdminLoginBtn = document.getElementById('setup-admin-login-btn');
+    if (setupAdminLoginBtn) {
+        setupAdminLoginBtn.addEventListener('click', () => {
+            openAuthModal('Admin login is required when auth is enabled.');
+        });
+    }
 
-    document.getElementById('setup-admin-logout-btn').addEventListener('click', async () => {
-        await logoutSession();
-    });
+    const setupAdminLogoutBtn = document.getElementById('setup-admin-logout-btn');
+    if (setupAdminLogoutBtn) {
+        setupAdminLogoutBtn.addEventListener('click', async () => {
+            await logoutSession();
+        });
+    }
 
     document.getElementById('auth-login-btn').addEventListener('click', async () => {
         await loginWithModalForm();
@@ -2904,12 +2917,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         runtime.firstRunRequired = !!bootstrap?.first_run_required;
         if (runtime.firstRunRequired) {
             showFirstRunOverlay();
-        } else {
-            const setupBody = document.getElementById('setup-body');
-            const setupToggle = document.getElementById('setup-toggle-btn');
-            if (setupBody && !setupBody.classList.contains('hidden')) {
-                // already open — leave it
-            }
         }
     } catch (err) {
         // If bootstrap fails we continue with existing behavior.

@@ -103,6 +103,32 @@ PROVIDER_KEY_ENV = {
     "meteomatics": "METEOMATICS_API_KEY",
 }
 
+AGENT_SCOPE_DEFINITIONS: dict[str, str] = {
+    "weather.read": "Read weather observations, forecasts, alerts, METAR, tides, and PWS feeds",
+    "config.read": "Read bootstrap/config metadata",
+    "stats.read": "Read upstream provider call counters",
+    "debug.read": "Read debug telemetry payload",
+}
+
+AGENT_SCOPE_BY_PATH: dict[str, str] = {
+    "/api/config": "config.read",
+    "/api/bootstrap": "config.read",
+    "/api/current": "weather.read",
+    "/api/forecast": "weather.read",
+    "/api/hourly": "weather.read",
+    "/api/alerts": "weather.read",
+    "/api/metar": "weather.read",
+    "/api/tides": "weather.read",
+    "/api/owm": "weather.read",
+    "/api/pws": "weather.read",
+    "/api/pws/trend": "weather.read",
+    "/api/stats": "stats.read",
+    "/api/debug": "debug.read",
+    "/api/capabilities": "config.read",
+}
+
+AGENT_PROFILE_VERSION = "1.0"
+
 
 def _default_provider_config() -> dict[str, dict[str, Any]]:
     return {
@@ -132,6 +158,7 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     global OWM_KEY, PWS_PROVIDER, PWS_KEY, PWS_STATIONS, ALERT_LOCATIONS
     global AUTH_ENABLED, AUTH_REQUIRE_VIEWER_LOGIN, AUTH_USERS, AUTH_TOKEN_SECRET
     global PROVIDERS, FIRST_RUN_COMPLETE, MAP_PROVIDER
+    global AGENT_TOKENS, REVOKED_AGENT_TOKEN_IDS
 
     runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
 
@@ -173,6 +200,12 @@ def _apply_config(cfg: dict[str, Any]) -> None:
         or auth_cfg.get("token_secret")
         or "dev-okonebo-secret"
     )
+    AGENT_TOKENS = list(SECURE_STORE.get_json("auth.agent_tokens", []) or [])
+    REVOKED_AGENT_TOKEN_IDS = set(
+        str(token_id)
+        for token_id in (SECURE_STORE.get_json("auth.revoked_agent_token_ids", []) or [])
+        if str(token_id).strip()
+    )
 
     provider_cfg = _default_provider_config()
     from_file = cfg.get("providers", {}) if isinstance(cfg.get("providers", {}), dict) else {}
@@ -194,6 +227,8 @@ DEBUG_STATE: dict[str, Any] = {
     "last_client_snapshot": None,
     "last_client_update": None,
 }
+AGENT_TOKENS: list[dict[str, Any]] = []
+REVOKED_AGENT_TOKEN_IDS: set[str] = set()
 RATE_LIMIT_WINDOW_SEC = 60
 RATE_LIMIT_MAX_PER_WINDOW = 800
 _RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
@@ -271,14 +306,26 @@ def _find_user(username: str) -> dict[str, Any] | None:
     return None
 
 
-def _make_token(username: str, role: str, ttl_hours: int = 24) -> str:
+def _make_token(
+    username: str,
+    role: str,
+    ttl_hours: int = 24,
+    token_id: str | None = None,
+    scopes: list[str] | None = None,
+    token_type: str = "user",
+) -> str:
     now = int(time.time())
     payload = {
         "sub": username,
         "role": role,
         "iat": now,
         "exp": now + (ttl_hours * 3600),
+        "type": token_type,
     }
+    if token_id:
+        payload["jti"] = token_id
+    if scopes:
+        payload["scopes"] = [str(scope).strip() for scope in scopes if str(scope).strip()]
     payload_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
     sig = hmac.new(AUTH_TOKEN_SECRET.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
     return f"{payload_b64}.{sig}"
@@ -293,6 +340,10 @@ def _decode_token(token: str) -> dict[str, Any] | None:
         payload = json.loads(_b64url_decode(payload_b64).decode())
         if int(payload.get("exp", 0)) < int(time.time()):
             return None
+        if payload.get("type") == "agent":
+            token_id = str(payload.get("jti") or "").strip()
+            if token_id and token_id in REVOKED_AGENT_TOKEN_IDS:
+                return None
         # Reject revoked tokens.
         if payload_b64 in _TOKEN_DENYLIST:
             return None
@@ -314,6 +365,11 @@ def _revoke_token(token: str) -> None:
             del _TOKEN_DENYLIST[k]
         if exp > now:
             _TOKEN_DENYLIST[payload_b64] = exp
+        if payload.get("type") == "agent":
+            token_id = str(payload.get("jti") or "").strip()
+            if token_id:
+                REVOKED_AGENT_TOKEN_IDS.add(token_id)
+                SECURE_STORE.set_json("auth.revoked_agent_token_ids", sorted(REVOKED_AGENT_TOKEN_IDS))
     except Exception:
         pass  # If token is malformed, nothing to revoke.
 
@@ -378,11 +434,28 @@ async def api_auth_guard(request: Request, call_next):
     if path.startswith("/api/auth/"):
         return await call_next(request)
 
+    if path == "/api/capabilities":
+        return await call_next(request)
+
     identity = _request_identity(request)
-    admin_only = (path == "/api/settings" and method == "POST")
+    admin_only = (path == "/api/settings" and method == "POST") or path.startswith("/api/agent-tokens")
 
     if AUTH_REQUIRE_VIEWER_LOGIN and identity is None:
         return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
+    if identity is not None and identity.get("role") == "agent":
+        required_scope = AGENT_SCOPE_BY_PATH.get(path)
+        if not required_scope:
+            return JSONResponse(status_code=403, content={"detail": "Agent token cannot access this endpoint"})
+        granted = {str(scope).strip() for scope in (identity.get("scopes") or []) if str(scope).strip()}
+        if required_scope not in granted:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "Agent token missing required scope",
+                    "required_scope": required_scope,
+                },
+            )
 
     if admin_only:
         if identity is None:
@@ -487,6 +560,242 @@ async def api_auth_me(request: Request):
         "role": identity.get("role"),
         "exp": identity.get("exp"),
     }
+
+
+def _require_admin_identity(request: Request) -> dict[str, Any]:
+    if not AUTH_ENABLED:
+        raise HTTPException(status_code=400, detail="Enable auth before managing agent tokens")
+    identity = _request_identity(request)
+    if not identity:
+        raise HTTPException(status_code=401, detail="Admin login required")
+    if identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return identity
+
+
+@app.get(
+    "/api/capabilities",
+    summary="Agent capability metadata",
+    description="Lists available API tool surfaces and scope requirements for agent clients.",
+    tags=["Config"],
+)
+async def api_capabilities():
+    return {
+        "service": "okonebo",
+        "version": "1.0.0",
+        "auth": {
+            "enabled": AUTH_ENABLED,
+            "require_viewer_login": AUTH_REQUIRE_VIEWER_LOGIN,
+            "agent_scopes": AGENT_SCOPE_DEFINITIONS,
+        },
+        "tools": [
+            {"name": "get_config", "endpoint": "/api/config", "scope": "config.read"},
+            {"name": "get_bootstrap", "endpoint": "/api/bootstrap", "scope": "config.read"},
+            {"name": "get_current", "endpoint": "/api/current", "scope": "weather.read"},
+            {"name": "get_forecast", "endpoint": "/api/forecast", "scope": "weather.read"},
+            {"name": "get_hourly", "endpoint": "/api/hourly", "scope": "weather.read"},
+            {"name": "get_alerts", "endpoint": "/api/alerts", "scope": "weather.read"},
+            {"name": "get_metar", "endpoint": "/api/metar", "scope": "weather.read"},
+            {"name": "get_tides", "endpoint": "/api/tides", "scope": "weather.read"},
+            {"name": "get_pws", "endpoint": "/api/pws", "scope": "weather.read"},
+            {"name": "get_pws_trend", "endpoint": "/api/pws/trend", "scope": "weather.read"},
+            {"name": "get_stats", "endpoint": "/api/stats", "scope": "stats.read"},
+            {"name": "get_debug", "endpoint": "/api/debug", "scope": "debug.read"},
+        ],
+    }
+
+
+@app.get(
+    "/.well-known/okonebo-agent.json",
+    summary="Agent auto-configuration profile",
+    description="Machine-readable profile that agents can load to self-configure against OkoNebo.",
+    tags=["Config"],
+)
+async def api_agent_profile():
+    base_url = "http://localhost:8888"
+    return {
+        "service": "okonebo",
+        "profile_version": AGENT_PROFILE_VERSION,
+        "base_url": base_url,
+        "auth": {
+            "type": "bearer",
+            "token_kind": "agent",
+            "token_creation_endpoint": "/api/agent-tokens",
+            "token_revoke_endpoint": "/api/agent-tokens/{token_id}",
+            "required_header": "Authorization: Bearer <agent_token>",
+            "scopes": AGENT_SCOPE_DEFINITIONS,
+        },
+        "discovery": {
+            "capabilities_endpoint": "/api/capabilities",
+            "openapi": "/openapi.json",
+            "swagger": "/docs",
+        },
+        "manual": {
+            "human_page": "/agent-manual.html",
+            "integration_guide": "/agent-integrations.html",
+        },
+        "tools": [
+            {"name": "get_current", "method": "GET", "path": "/api/current", "scope": "weather.read"},
+            {"name": "get_forecast", "method": "GET", "path": "/api/forecast", "scope": "weather.read"},
+            {"name": "get_hourly", "method": "GET", "path": "/api/hourly", "scope": "weather.read"},
+            {"name": "get_alerts", "method": "GET", "path": "/api/alerts", "scope": "weather.read"},
+            {"name": "get_metar", "method": "GET", "path": "/api/metar", "scope": "weather.read"},
+            {"name": "get_tides", "method": "GET", "path": "/api/tides", "scope": "weather.read"},
+            {"name": "get_pws", "method": "GET", "path": "/api/pws", "scope": "weather.read"},
+            {"name": "get_pws_trend", "method": "GET", "path": "/api/pws/trend", "scope": "weather.read"},
+            {"name": "get_config", "method": "GET", "path": "/api/config", "scope": "config.read"},
+            {"name": "get_bootstrap", "method": "GET", "path": "/api/bootstrap", "scope": "config.read"},
+            {"name": "get_stats", "method": "GET", "path": "/api/stats", "scope": "stats.read"},
+            {"name": "get_debug", "method": "GET", "path": "/api/debug", "scope": "debug.read"},
+        ],
+        "agent_behavior": {
+            "rules": [
+                "Prefer read-only endpoints unless explicitly instructed otherwise.",
+                "Do not call admin endpoints using agent tokens.",
+                "Handle 502 responses as provider-fallback failures and report attempted providers.",
+                "Use /api/capabilities to validate scope coverage before tool calls.",
+            ]
+        },
+    }
+
+
+@app.get(
+    "/.well-known/okonebo-agent-instructions.txt",
+    summary="Plain-text agent instructions",
+    description="Human-readable and model-ingestible instruction block for OkoNebo-compatible agents.",
+    tags=["Config"],
+)
+async def api_agent_instructions_txt():
+    lines = [
+        "OkoNebo Agent Instructions",
+        "",
+        "Identity:",
+        "- You are an agent consuming OkoNebo weather APIs.",
+        "- Base URL: http://localhost:8888",
+        "",
+        "Authentication:",
+        "- Send Authorization: Bearer <agent_token>.",
+        "- Use only granted scopes: weather.read, config.read, stats.read, debug.read.",
+        "",
+        "Discovery:",
+        "- Load /.well-known/okonebo-agent.json first.",
+        "- Validate tools/scopes via GET /api/capabilities.",
+        "",
+        "Tool Mapping:",
+        "- get_current -> GET /api/current",
+        "- get_forecast -> GET /api/forecast",
+        "- get_hourly -> GET /api/hourly",
+        "- get_alerts -> GET /api/alerts",
+        "- get_metar -> GET /api/metar",
+        "- get_tides -> GET /api/tides?days=2",
+        "- get_stats -> GET /api/stats",
+        "- get_config -> GET /api/config",
+        "- get_bootstrap -> GET /api/bootstrap",
+        "",
+        "Runtime Rules:",
+        "- Treat HTTP 401/403 as auth/scope errors and stop retry loops.",
+        "- Treat HTTP 502 on weather routes as upstream provider failure; report fallback status.",
+        "- Keep calls read-only unless operator explicitly authorizes admin mutation.",
+        "",
+        "Operator Docs:",
+        "- Human manual: /agent-manual.html",
+        "- Integration guide: /agent-integrations.html",
+    ]
+    return Response(content="\n".join(lines), media_type="text/plain; charset=utf-8")
+
+
+@app.get(
+    "/api/agent-tokens",
+    summary="List managed agent tokens",
+    description="Returns managed AI agent tokens metadata (token values are never returned).",
+    tags=["Auth"],
+)
+async def api_agent_tokens_get(request: Request):
+    _require_admin_identity(request)
+    return {
+        "tokens": AGENT_TOKENS,
+        "revoked_ids": sorted(REVOKED_AGENT_TOKEN_IDS),
+        "allowed_scopes": AGENT_SCOPE_DEFINITIONS,
+    }
+
+
+@app.post(
+    "/api/agent-tokens",
+    summary="Create managed agent token",
+    description="Creates a scoped AI agent bearer token. Token value is returned only once.",
+    tags=["Auth"],
+)
+async def api_agent_tokens_post(request: Request, payload: dict[str, Any] = Body(...)):
+    identity = _require_admin_identity(request)
+
+    name = str(payload.get("name") or "").strip() or "Agent Token"
+    ttl_hours = int(payload.get("ttl_hours") or 24)
+    ttl_hours = max(1, min(ttl_hours, 24 * 90))
+    scopes = payload.get("scopes") or ["weather.read", "config.read", "stats.read"]
+    if not isinstance(scopes, list):
+        raise HTTPException(status_code=400, detail="scopes must be a list")
+    clean_scopes = [str(scope).strip() for scope in scopes if str(scope).strip()]
+    unknown_scopes = [scope for scope in clean_scopes if scope not in AGENT_SCOPE_DEFINITIONS]
+    if unknown_scopes:
+        raise HTTPException(status_code=400, detail=f"Unsupported scopes: {', '.join(unknown_scopes)}")
+
+    token_id = secrets.token_hex(12)
+    now = int(time.time())
+    exp = now + (ttl_hours * 3600)
+    token = _make_token(
+        username=f"agent:{token_id}",
+        role="agent",
+        ttl_hours=ttl_hours,
+        token_id=token_id,
+        scopes=clean_scopes,
+        token_type="agent",
+    )
+
+    record = {
+        "id": token_id,
+        "name": name,
+        "scopes": clean_scopes,
+        "created_at": now,
+        "expires_at": exp,
+        "created_by": str(identity.get("sub") or "admin"),
+        "revoked": False,
+    }
+    AGENT_TOKENS.append(record)
+    SECURE_STORE.set_json("auth.agent_tokens", AGENT_TOKENS)
+
+    return {
+        "id": token_id,
+        "token": token,
+        "name": name,
+        "scopes": clean_scopes,
+        "expires_at": exp,
+    }
+
+
+@app.delete(
+    "/api/agent-tokens/{token_id}",
+    summary="Revoke managed agent token",
+    description="Revokes an AI agent token by token id.",
+    tags=["Auth"],
+)
+async def api_agent_tokens_delete(token_id: str, request: Request):
+    _require_admin_identity(request)
+    wanted = str(token_id or "").strip()
+    if not wanted:
+        raise HTTPException(status_code=400, detail="token_id is required")
+
+    updated = False
+    for item in AGENT_TOKENS:
+        if str(item.get("id") or "") == wanted:
+            item["revoked"] = True
+            updated = True
+            break
+
+    REVOKED_AGENT_TOKEN_IDS.add(wanted)
+    SECURE_STORE.set_json("auth.agent_tokens", AGENT_TOKENS)
+    SECURE_STORE.set_json("auth.revoked_agent_token_ids", sorted(REVOKED_AGENT_TOKEN_IDS))
+
+    return {"ok": True, "token_id": wanted, "updated": updated}
 
 @app.get(
     "/api/bootstrap",

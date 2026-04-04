@@ -43,8 +43,16 @@ def map_provider_options(html: str, select_id: str) -> set[str]:
 
 def main() -> int:
     html = fetch_html("/")
+    admin_html = fetch_html("/admin.html")
+    integrations_html = fetch_html("/agent-integrations.html")
+    manual_html = fetch_html("/agent-manual.html")
+    profile_json = fetch_html("/.well-known/okonebo-agent.json")
+    instructions_txt = fetch_html("/.well-known/okonebo-agent-instructions.txt")
 
-    # Setup panel critical controls.
+    # Dashboard should link to admin page.
+    ensure(has_id(html, "admin-section"), "Missing admin section on dashboard")
+
+    # Setup/admin controls now live on /admin.html.
     for required_id in [
         "setup-section",
         "setup-save-btn",
@@ -53,8 +61,10 @@ def main() -> int:
         "setup-home-lon",
         "setup-auth-enabled",
         "setup-auth-admin-user",
+        "agent-token-section",
+        "agent-token-create-btn",
     ]:
-        ensure(has_id(html, required_id), f"Missing setup control id: {required_id}")
+        ensure(has_id(admin_html, required_id), f"Missing admin/setup control id: {required_id}")
 
     # First-run overlay critical controls.
     for required_id in [
@@ -67,15 +77,28 @@ def main() -> int:
         ensure(has_id(html, required_id), f"Missing first-run control id: {required_id}")
 
     expected_map_options = {"esri_street", "osm", "carto_light", "carto_dark"}
-    setup_options = map_provider_options(html, "setup-map-provider")
+    setup_options = map_provider_options(admin_html, "setup-map-provider")
     firstrun_options = map_provider_options(html, "fr-map-provider")
 
     ensure(expected_map_options.issubset(setup_options), "Setup map provider options are incomplete")
     ensure(expected_map_options.issubset(firstrun_options), "First-run map provider options are incomplete")
 
-    print("frontend smoke: setup controls OK")
+    ensure("MCP" in integrations_html and "ACP" in integrations_html, "Integration guide must mention MCP and ACP")
+    ensure("okonebo-agent.json" in integrations_html, "Integration guide must include auto-config profile link")
+    ensure("agent-manual.html" in integrations_html, "Integration guide must include manual instructions link")
+
+    ensure("Agent Manual Instructions" in manual_html, "Manual instruction page must be available")
+    ensure("Copy/Paste Prompt Template" in manual_html, "Manual page should include prompt template section")
+
+    ensure('"service":"okonebo"' in profile_json.replace(" ", ""), "Auto-config profile must identify service")
+    ensure('"tools"' in profile_json, "Auto-config profile must include tool definitions")
+    ensure("OkoNebo Agent Instructions" in instructions_txt, "Plain-text instructions endpoint must be available")
+
+    print("frontend smoke: admin/setup controls OK")
     print("frontend smoke: first-run controls OK")
     print("frontend smoke: map provider options OK")
+    print("frontend smoke: integration guide page OK")
+    print("frontend smoke: auto/manual agent instruction pages OK")
     print("frontend smoke: OK")
     return 0
 

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OkoNebo Admin</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-shell" style="grid-template-columns: 1fr; max-width: 1200px; margin: 0 auto;">
+        <main class="main-col" style="padding: 16px;">
+            <div class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h2>OkoNebo Admin</h2>
+                    <div style="display:flex; gap:8px;">
+                        <a href="/agent-integrations.html" class="map-btn" style="text-decoration:none;">AI Integration Guide</a>
+                        <a href="/" class="map-btn" style="text-decoration:none;">Back to Dashboard</a>
+                    </div>
+                </div>
+                <div id="admin-auth-status" class="setup-status">Sign in as admin to manage settings and agent tokens.</div>
+                <div class="setup-actions">
+                    <input id="admin-login-user" class="setup-input" type="text" placeholder="admin username" style="max-width:220px;">
+                    <input id="admin-login-pass" class="setup-input" type="password" placeholder="password" style="max-width:220px;">
+                    <button id="admin-login-btn" class="btn-refresh" type="button">Admin Login</button>
+                    <button id="admin-logout-btn" class="map-btn" type="button">Logout</button>
+                </div>
+            </div>
+
+            <section class="panel-sec" id="setup-section">
+                <div class="panel-sec-hdr">
+                    <h3>Runtime Setup</h3>
+                </div>
+                <div id="setup-body" class="setup-body">
+                    <div class="setup-grid">
+                        <div class="setup-row"><span class="setup-lbl">Home Label</span><input id="setup-home-label" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Home Lat</span><input id="setup-home-lat" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Home Lon</span><input id="setup-home-lon" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Work Label</span><input id="setup-work-label" class="setup-input" type="text" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Work Lat</span><input id="setup-work-lat" class="setup-input" type="text" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Work Lon</span><input id="setup-work-lon" class="setup-input" type="text" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Timezone</span><input id="setup-timezone" class="setup-input" type="text" placeholder="America/Chicago"></div>
+                        <div class="setup-row"><span class="setup-lbl">User Agent</span><input id="setup-user-agent" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Map Provider</span><select id="setup-map-provider" class="setup-input"><option value="esri_street">Esri Street</option><option value="osm">OpenStreetMap</option><option value="carto_light">CARTO Light</option><option value="carto_dark">CARTO Dark</option></select></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS Provider</span><input id="setup-pws-provider" class="setup-input" type="text" placeholder="weather.com"></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS Station IDs</span><input id="setup-pws-stations" class="setup-input" type="text" placeholder="ID1,ID2"></div>
+
+                        <div class="setup-row"><span class="setup-lbl">NWS</span><label class="ctrl-lbl"><input id="setup-provider-nws-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">OpenWeather</span><label class="ctrl-lbl"><input id="setup-provider-openweather-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">OWM API Key</span><input id="setup-provider-openweather-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS</span><label class="ctrl-lbl"><input id="setup-provider-pws-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS API Key</span><input id="setup-provider-pws-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Tomorrow.io</span><label class="ctrl-lbl"><input id="setup-provider-tomorrow-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Tomorrow Key</span><input id="setup-provider-tomorrow-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Meteomatics</span><label class="ctrl-lbl"><input id="setup-provider-meteomatics-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Meteomatics Key</span><input id="setup-provider-meteomatics-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">WeatherAPI</span><label class="ctrl-lbl"><input id="setup-provider-weatherapi-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">WeatherAPI Key</span><input id="setup-provider-weatherapi-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Visual Crossing</span><label class="ctrl-lbl"><input id="setup-provider-visualcrossing-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Visual Crossing Key</span><input id="setup-provider-visualcrossing-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">AviationWeather</span><label class="ctrl-lbl"><input id="setup-provider-aviationweather-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">NOAA Tides</span><label class="ctrl-lbl"><input id="setup-provider-noaa_tides-enabled" type="checkbox"> Enable</label></div>
+
+                        <div class="setup-row"><span class="setup-lbl">Enable Auth</span><label class="ctrl-lbl"><input id="setup-auth-enabled" type="checkbox"> Auth system enabled</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Viewer Login</span><label class="ctrl-lbl"><input id="setup-auth-viewer-required" type="checkbox"> Require viewer login</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Admin User</span><input id="setup-auth-admin-user" class="setup-input" type="text" placeholder="admin"></div>
+                        <div class="setup-row"><span class="setup-lbl">Admin Password</span><input id="setup-auth-admin-pass" class="setup-input" type="password" placeholder="leave blank to keep"></div>
+                        <div class="setup-row"><span class="setup-lbl">Viewer User</span><input id="setup-auth-viewer-user" class="setup-input" type="text" placeholder="viewer"></div>
+                        <div class="setup-row"><span class="setup-lbl">Viewer Password</span><input id="setup-auth-viewer-pass" class="setup-input" type="password" placeholder="optional"></div>
+                    </div>
+                    <div class="setup-actions">
+                        <button id="setup-save-btn" class="btn-refresh" type="button">Save Settings</button>
+                    </div>
+                    <div id="setup-status" class="setup-status">Ready.</div>
+                </div>
+            </section>
+
+            <section class="panel-sec" id="agent-token-section" style="margin-top: 16px;">
+                <div class="panel-sec-hdr">
+                    <h3>AI Agent Tokens</h3>
+                </div>
+                <div class="setup-grid">
+                    <div class="setup-row"><span class="setup-lbl">Token Name</span><input id="agent-token-name" class="setup-input" type="text" placeholder="OpenClaw Agent"></div>
+                    <div class="setup-row"><span class="setup-lbl">TTL Hours</span><input id="agent-token-ttl" class="setup-input" type="number" min="1" max="2160" value="168"></div>
+                    <div class="setup-row"><span class="setup-lbl">weather.read</span><label class="ctrl-lbl"><input id="scope-weather-read" type="checkbox" checked> Grant</label></div>
+                    <div class="setup-row"><span class="setup-lbl">config.read</span><label class="ctrl-lbl"><input id="scope-config-read" type="checkbox" checked> Grant</label></div>
+                    <div class="setup-row"><span class="setup-lbl">stats.read</span><label class="ctrl-lbl"><input id="scope-stats-read" type="checkbox" checked> Grant</label></div>
+                    <div class="setup-row"><span class="setup-lbl">debug.read</span><label class="ctrl-lbl"><input id="scope-debug-read" type="checkbox"> Grant</label></div>
+                </div>
+                <div class="setup-actions">
+                    <button id="agent-token-create-btn" class="btn-refresh" type="button">Create Token</button>
+                    <a href="/agent-integrations.html" class="map-btn" style="text-decoration:none;">View Integration Methods</a>
+                </div>
+                <div id="agent-token-status" class="setup-status">No token created yet.</div>
+                <pre id="agent-token-value" class="setup-status" style="white-space: pre-wrap; display:none;"></pre>
+                <div id="agent-token-list" class="forecast-list" style="margin-top: 12px;"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="js/admin.js"></script>
+</body>
+</html>
