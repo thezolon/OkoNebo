@@ -1,4 +1,4 @@
-# WeatherApp Implementation
+# OkoNebo Implementation
 
 ## Runtime Model
 

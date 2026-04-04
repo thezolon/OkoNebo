@@ -1,6 +1,6 @@
-# WeatherApp
+# OkoNebo
 
-[![CI](https://github.com/zaipc/weatherapp/actions/workflows/ci.yml/badge.svg)](https://github.com/zaipc/weatherapp/actions/workflows/ci.yml)
+[![CI](https://github.com/thezolon/OkoNebo/actions/workflows/ci.yml/badge.svg)](https://github.com/thezolon/OkoNebo/actions/workflows/ci.yml)
 
 Self-hosted weather dashboard and local API for your configured monitoring location. Current conditions, active alerts, 7-day forecast, hourly trend, radar, personal weather stations, aviation METAR, and coastal tide predictions - all from one Docker container, no cloud dependency required.
 

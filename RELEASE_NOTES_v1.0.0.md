@@ -1,4 +1,4 @@
-# WeatherApp v1.0.0 Release Notes
+# OkoNebo v1.0.0 Release Notes
 
 Release date: 2026-04-04
 
