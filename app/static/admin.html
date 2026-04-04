@@ -6,7 +6,7 @@
     <title>OkoNebo Admin</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="admin-page">
     <div class="app-shell" style="grid-template-columns: 1fr; max-width: 1200px; margin: 0 auto;">
         <main class="main-col" style="padding: 16px;">
             <div class="panel-sec" style="margin-bottom: 16px;">
@@ -19,10 +19,14 @@
                 </div>
                 <div id="admin-auth-status" class="setup-status">Sign in as admin to manage settings and agent tokens.</div>
                 <div class="setup-actions">
-                    <input id="admin-login-user" class="setup-input" type="text" placeholder="admin username" style="max-width:220px;">
+                    <input id="admin-login-user" class="setup-input" type="text" value="admin" placeholder="admin username" style="max-width:220px;">
                     <input id="admin-login-pass" class="setup-input" type="password" placeholder="password" style="max-width:220px;">
                     <button id="admin-login-btn" class="btn-refresh" type="button">Admin Login</button>
                     <button id="admin-logout-btn" class="map-btn" type="button">Logout</button>
+                </div>
+                <div class="setup-status" style="margin-top:8px;">
+                    No built-in default password is set by code. Typical first setup uses username <strong>admin</strong> and your configured
+                    <code>ADMIN_PASSWORD</code> from <code>.env</code> (INSTALL examples use <code>change-me-strong-password</code> as a placeholder).
                 </div>
             </div>
 

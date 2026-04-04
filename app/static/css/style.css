@@ -55,6 +55,20 @@ html, body {
     line-height: 1.5;
 }
 
+/* Admin and documentation pages need normal document scrolling. */
+body.admin-page {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+body.admin-page .app-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+}
+
 /* ── Alert Ticker ────────────────────────────────────────────────────────── */
 .alert-ticker {
     position: fixed;

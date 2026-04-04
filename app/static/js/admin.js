@@ -134,7 +134,12 @@ async function loadSettings() {
         fillSettings(settings);
         setStatus('setup-status', 'Settings loaded.', 'ok');
     } catch (err) {
-        setStatus('setup-status', `Failed to load settings: ${err.message}`, 'warn');
+        const msg = String(err?.message || 'unknown error');
+        if (/401|403|Admin login required|Admin role required/i.test(msg)) {
+            setStatus('setup-status', 'Admin login required. Use your configured ADMIN_USERNAME/ADMIN_PASSWORD from .env or Setup.', 'warn');
+            return;
+        }
+        setStatus('setup-status', `Failed to load settings: ${msg}`, 'warn');
     }
 }
 
@@ -269,7 +274,12 @@ async function loadAgentTokens() {
         renderTokenList(data.tokens || []);
         setStatus('agent-token-status', 'Token list loaded.', 'ok');
     } catch (err) {
-        setStatus('agent-token-status', `Failed to load tokens: ${err.message}`, 'warn');
+        const msg = String(err?.message || 'unknown error');
+        if (/401|403|Admin login required|Admin role required/i.test(msg)) {
+            setStatus('agent-token-status', 'Admin login required to manage agent tokens.', 'warn');
+            return;
+        }
+        setStatus('agent-token-status', `Failed to load tokens: ${msg}`, 'warn');
     }
 }
 
