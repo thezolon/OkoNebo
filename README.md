@@ -33,6 +33,13 @@ docker compose up -d --build
 bash health-check.sh
 ```
 
+Windows (PowerShell):
+
+```powershell
+docker compose up -d --build
+.\health-check.ps1
+```
+
 ### 3. Open the UI
 
 Browse to **http://localhost:8888** - a first-run overlay will prompt for your location and any optional provider API keys.
@@ -46,13 +53,6 @@ For a complete step-by-step guide see [INSTALL.md](INSTALL.md).
 | http://localhost:8888/docs | Swagger UI |
 | http://localhost:8888/openapi.json | OpenAPI spec |
 | http://localhost:8888/api/debug | Runtime diagnostics |
-
-### Direct Python (no Docker)
-
-```bash
-bash start.sh
-bash health-check.sh
-```
 
 ### Raspberry Pi
 
