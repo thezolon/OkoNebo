@@ -1,0 +1,95 @@
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .icon-weather { fill: #1a1a1a; }
+      .icon-hexagon-bg { fill: #f5f5f5; }
+      .icon-grid { stroke: #e0e0e0; stroke-width: 0.5; }
+    </style>
+  </defs>
+
+  <!-- Polar grid -->
+  <g id="grid">
+    <circle cx="128" cy="128" r="20" class="icon-grid" fill="none"/>
+    <circle cx="128" cy="128" r="40" class="icon-grid" fill="none"/>
+    <circle cx="128" cy="128" r="60" class="icon-grid" fill="none"/>
+    <circle cx="128" cy="128" r="80" class="icon-grid" fill="none"/>
+    
+    <line x1="128" y1="128" x2="128" y2="48" class="icon-grid"/>
+    <line x1="128" y1="128" x2="168" y2="58" class="icon-grid"/>
+    <line x1="128" y1="128" x2="198" y2="88" class="icon-grid"/>
+    <line x1="128" y1="128" x2="208" y2="128" class="icon-grid"/>
+    <line x1="128" y1="128" x2="198" y2="168" class="icon-grid"/>
+    <line x1="128" y1="128" x2="168" y2="198" class="icon-grid"/>
+    <line x1="128" y1="128" x2="128" y2="208" class="icon-grid"/>
+    <line x1="128" y1="128" x2="88" y2="198" class="icon-grid"/>
+    <line x1="128" y1="128" x2="58" y2="168" class="icon-grid"/>
+    <line x1="128" y1="128" x2="48" y2="128" class="icon-grid"/>
+    <line x1="128" y1="128" x2="58" y2="88" class="icon-grid"/>
+    <line x1="128" y1="128" x2="88" y2="58" class="icon-grid"/>
+  </g>
+
+  <!-- Weather icons in hexagons -->
+  <g id="icons">
+    <!-- Top-right: Sun -->
+    <g transform="translate(168, 68)">
+      <polygon points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6" class="icon-hexagon-bg" stroke="#1a1a1a" stroke-width="1.2"/>
+      <circle cx="0" cy="0" r="3.5" class="icon-weather"/>
+      <circle cx="-6" cy="-6" r="1.2" class="icon-weather"/>
+      <circle cx="6" cy="-6" r="1.2" class="icon-weather"/>
+      <circle cx="8" cy="0" r="1.2" class="icon-weather"/>
+      <circle cx="6" cy="6" r="1.2" class="icon-weather"/>
+      <circle cx="-6" cy="6" r="1.2" class="icon-weather"/>
+      <circle cx="-8" cy="0" r="1.2" class="icon-weather"/>
+    </g>
+
+    <!-- Right: Filled hexagon -->
+    <g transform="translate(208, 108)">
+      <polygon points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6" class="icon-hexagon-bg" stroke="#1a1a1a" stroke-width="1.2" fill="#1a1a1a"/>
+    </g>
+
+    <!-- Bottom-right: Cloud with rain -->
+    <g transform="translate(168, 148)">
+      <polygon points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6" class="icon-hexagon-bg" stroke="#1a1a1a" stroke-width="1.2"/>
+      <path d="M -5,-3 Q -7,-6 -5,-9 Q -1,-11 2,-9 Q 5,-11 6,-7 Q 8,-9 8,-5 Q 6,-3 3,-2 L -5,-2" class="icon-weather"/>
+      <line x1="-4" y1="3" x2="-2" y2="8" class="icon-weather" stroke-width="1"/>
+      <line x1="0" y1="3" x2="2" y2="8" class="icon-weather" stroke-width="1"/>
+      <line x1="4" y1="3" x2="6" y2="8" class="icon-weather" stroke-width="1"/>
+    </g>
+
+    <!-- Center: Compass with crosshairs -->
+    <g transform="translate(128, 128)">
+      <circle cx="0" cy="0" r="10" class="icon-weather" opacity="0.7"/>
+      <circle cx="0" cy="0" r="6.5" fill="white" stroke="#1a1a1a" stroke-width="1"/>
+      <circle cx="0" cy="0" r="2" class="icon-weather"/>
+      <line x1="-5" y1="0" x2="5" y2="0" stroke="#1a1a1a" stroke-width="1.2"/>
+      <line x1="0" y1="-5" x2="0" y2="5" stroke="#1a1a1a" stroke-width="1.2"/>
+      <path d="M 0,-6.5 L 2,-3 L 0,-1 L -2,-3 Z" class="icon-weather"/>
+    </g>
+
+    <!-- Bottom-left: Sun -->
+    <g transform="translate(88, 148)">
+      <polygon points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6" class="icon-hexagon-bg" stroke="#1a1a1a" stroke-width="1.2"/>
+      <circle cx="0" cy="0" r="3.5" class="icon-weather"/>
+      <circle cx="-6" cy="-6" r="1.2" class="icon-weather"/>
+      <circle cx="6" cy="-6" r="1.2" class="icon-weather"/>
+      <circle cx="8" cy="0" r="1.2" class="icon-weather"/>
+      <circle cx="6" cy="6" r="1.2" class="icon-weather"/>
+      <circle cx="-6" cy="6" r="1.2" class="icon-weather"/>
+      <circle cx="-8" cy="0" r="1.2" class="icon-weather"/>
+    </g>
+
+    <!-- Left: Filled hexagon -->
+    <g transform="translate(48, 108)">
+      <polygon points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6" class="icon-hexagon-bg" stroke="#1a1a1a" stroke-width="1.2" fill="#1a1a1a"/>
+    </g>
+
+    <!-- Top-left: Cloud with rain -->
+    <g transform="translate(88, 68)">
+      <polygon points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6" class="icon-hexagon-bg" stroke="#1a1a1a" stroke-width="1.2"/>
+      <path d="M -5,-3 Q -7,-6 -5,-9 Q -1,-11 2,-9 Q 5,-11 6,-7 Q 8,-9 8,-5 Q 6,-3 3,-2 L -5,-2" class="icon-weather"/>
+      <line x1="-4" y1="3" x2="-2" y2="8" class="icon-weather" stroke-width="1"/>
+      <line x1="0" y1="3" x2="2" y2="8" class="icon-weather" stroke-width="1"/>
+      <line x1="4" y1="3" x2="6" y2="8" class="icon-weather" stroke-width="1"/>
+    </g>
+  </g>
+</svg>

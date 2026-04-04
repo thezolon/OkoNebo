@@ -1,0 +1,23 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Z Logo inspired by personal branding -->
+  <defs>
+    <linearGradient id="zGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF2D2D;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#CC0000;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Main Z shape with weather integration -->
+  <g id="z-logo">
+    <!-- Top horizontal diagonal stroke with weather-inspired jagged edge -->
+    <path d="M 40 35 L 160 35 L 50 95 L 160 95 L 40 165 Q 35 170 40 175 L 160 175" 
+          fill="none" stroke="url(#zGradient)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Lightning accent on left for weather/energy symbolism -->
+    <path d="M 35 40 L 45 55 L 38 55 L 48 72 L 35 72" 
+          fill="url(#zGradient)" opacity="0.9"/>
+  </g>
+  
+  <!-- Circle background for icon usage -->
+  <circle cx="100" cy="100" r="95" fill="none" stroke="url(#zGradient)" stroke-width="2" opacity="0.3"/>
+</svg>

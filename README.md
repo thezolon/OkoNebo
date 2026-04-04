@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/thezolon/OkoNebo/actions/workflows/ci.yml/badge.svg)](https://github.com/thezolon/OkoNebo/actions/workflows/ci.yml)
 
+![OkoNebo Logo](app/static/okonebo-logo.svg)
+
 OkoNebo is a self-hosted weather dashboard and local API for your location. It combines current conditions, alerts, 7-day forecast, hourly trend, radar, PWS data, aviation METAR, and coastal tide predictions in one Docker service.
 
 ## Features
