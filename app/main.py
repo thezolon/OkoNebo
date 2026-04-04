@@ -45,8 +45,13 @@ if load_dotenv is not None:
 
 
 def _load_config_file() -> dict[str, Any]:
-    with open(_CONFIG_PATH) as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(_CONFIG_PATH) as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        # Fresh clones / CI may not have config.yaml yet; runtime defaults still allow
+        # tests and bootstrap endpoints to initialize safely.
+        return {}
 
 
 _cfg = _load_config_file()
