@@ -589,10 +589,22 @@ async function testAllProviders() {
     const testBtn = document.getElementById('test-all-providers');
     const testStatus = document.getElementById('test-all-status');
     testBtn.disabled = true;
-    testStatus.textContent = 'Testing all providers...';
+    
+    const enabledProviders = PROVIDER_IDS.filter((pid) => {
+        const enabledEl = document.getElementById(`setup-provider-${pid}-enabled`);
+        return enabledEl && enabledEl.checked;
+    });
+    
+    if (enabledProviders.length === 0) {
+        testStatus.textContent = 'No enabled providers to test';
+        testBtn.disabled = false;
+        return;
+    }
+    
+    testStatus.textContent = `Testing ${enabledProviders.length} enabled provider${enabledProviders.length === 1 ? '' : 's'}...`;
     
     let passed = 0, failed = 0;
-    for (const pid of PROVIDER_IDS) {
+    for (const pid of enabledProviders) {
         try {
             await testProvider(pid);
             passed++;
