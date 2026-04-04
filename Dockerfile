@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy app code
 COPY app/ app/
-COPY config.yaml .
+# Use example config as image default; docker-compose bind mount can override.
+COPY config.yaml.example ./config.yaml
 
 # Expose port for FastAPI backend
 EXPOSE 8000
