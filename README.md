@@ -11,7 +11,7 @@ OkoNebo is a self-hosted weather dashboard and local API for your location. It c
 - **First-run blocking overlay** - fresh installs prompt for location and optional API keys before the dashboard loads
 - **Encrypted settings store** - provider keys are stored in a Fernet-encrypted SQLite database, never in plain text on disk
 - **Optional authentication** - JWT-based login with admin and viewer roles; login rate limiting (10 attempts / 5 min / IP); token revocation on logout
-- **In-app Setup panel** - edit location, timezone, providers, and map layer without restarting
+- **In-app Setup panel** - edit location, timezone, providers (with per-provider pull cycles), authentication, and manage AI agent tokens without restarting; unsaved changes detection with Ctrl+S save shortcut
 - **Offline-aware UI** - persistent browser cache, last-known-good state, visible diagnostics
 - **Radar** - RainViewer with OWM overlay option; Esri/OSM/CARTO base layers
 - **PWS** - personal weather station comparison and trend chart

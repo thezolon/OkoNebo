@@ -50,10 +50,24 @@ Provider capability metadata is exposed via `/api/bootstrap` and used by fronten
 - Login rate limiting: 10 failed attempts per 5 minutes per IP.
 - JWT token denylist supports explicit logout invalidation (`POST /api/auth/logout`).
 
+### AI Agent Tokens
+
+- Agents (MCP, REST, ACP) authenticate via persistent bearer tokens with scoped permissions.
+- Tokens are created via `/agent-tokens` with configurable TTL and scope flags (`weather.read`, `config.read`, `stats.read`, `debug.read`).
+- Token value is displayed once at creation (with copy-to-clipboard helper) and never persisted or shown again.
+- Failed access attempts and token expiration are logged for audit.
+- Tokens can be deleted/revoked via admin panel with confirmation dialog.
+- Expandable token metadata shows scopes, creation/expiration timestamps, and status (active/revoked).
+
 ## First-Run and Setup UX
 
 - New installs show blocking first-run overlay requiring valid home coordinates.
-- Setup panel remains available post-install with parity fields for editing.
+- **In-app Setup Panel** allows editing all settings (location, timezone, provider configuration, authentication, AI agent tokens) with real-time unsaved changes detection.
+- **Provider Configuration** integrates enable/disable toggles, API key fields, and pull cycle controls in unified cards for each provider.
+- **Pull Cycle Control** lets operators tune provider check frequency (default 5m) without restarting.
+- **Provider Testing** includes individual test buttons per provider and a "Test All" button (only enabled providers) for quick validation.
+- **Keyboard Shortcuts**: Ctrl+S (Cmd+S on Mac) saves settings instantly.
+- **Unsaved Changes Detection**: Visual indicator and confirmation dialogs prevent data loss.
 - Client-side validation:
   - numeric lat/lon required
   - range check enforced: lat `-90..90`, lon `-180..180`

@@ -33,9 +33,11 @@
             <section class="panel-sec" style="margin-bottom: 16px;">
                 <div class="panel-sec-hdr"><h3>Provider Controls</h3></div>
                 <ul>
-                    <li>Enable or disable each provider at runtime without rebuilding the app.</li>
-                    <li>API keys saved in setup are stored encrypted in secure settings storage.</li>
-                    <li>Keyless providers can remain enabled by default for baseline coverage.</li>
+                    <li><strong>Enable/disable providers</strong> at runtime without rebuilding the app.</li>
+                    <li><strong>Pull cycle (seconds)</strong> controls how often we check each provider for updates. Lower = more responsive but more API calls. Default is 5m for most providers.</li>
+                    <li><strong>API keys</strong> saved in setup are stored encrypted in secure settings storage.</li>
+                    <li><strong>Test</strong> each provider individually to verify credentials work, or use <strong>Test All</strong> to quickly validate all enabled providers.</li>
+                    <li>Keyless providers (NWS, AviationWeather, NOAA Tides) can remain enabled by default for baseline coverage.</li>
                     <li>If one provider fails, weather routes fall back to others in configured order.</li>
                 </ul>
             </section>
@@ -61,6 +63,18 @@
                 <div class="setup-actions" style="margin-top:8px;">
                     <a href="/agent-integrations.html" class="map-btn" style="text-decoration:none;">Open AI Integration Guide</a>
                 </div>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Admin Panel Tips</h3></div>
+                <ul>
+                    <li><strong>Unsaved changes indicator</strong> (yellow circle ⊙) shows when you've modified settings but haven't saved yet.</li>
+                    <li><strong>Save Settings</strong> button persists all changes to the encrypted database. Press <strong>Ctrl+S</strong> (or Cmd+S on Mac) as a keyboard shortcut.</li>
+                    <li><strong>Discard Changes</strong> reverts all unsaved edits back to the last saved state—useful if you change your mind.</li>
+                    <li><strong>Copy Token</strong> button appears after creating an agent token. Click once to copy to clipboard.</li>
+                    <li><strong>Delete confirmation</strong> prevents accidental token removal—you'll be asked to confirm before deletion.</li>
+                    <li>Settings are organized into clearly labeled cards for easy scanning.</li>
+                </ul>
             </section>
 
             <section class="panel-sec">

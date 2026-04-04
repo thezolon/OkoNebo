@@ -3,30 +3,57 @@
 ## Date: 2026-04-04
 
 ## Phase Snapshot
-- Phase M1 (architecture/provider framework): in progress
-- Phase M2 (first-run/auth completion): in progress
-- Phase M3 (provider adapters): in progress
-- Phase M4 (security/quality): in progress
-- Phase M5 (release cut): not started
+- Phase M1 (architecture/provider framework): COMPLETE
+- Phase M2 (first-run/auth completion): COMPLETE
+- Phase M3 (provider adapters): COMPLETE
+- Phase M4 (security/quality): COMPLETE
+- Phase M5 (release cut): in progress
+
+## Recent Completions (Admin Panel UX Overhaul)
+
+### Pull Cycle Integration (4/4/26)
+- Moved provider pull cycle controls into unified provider cards (enables + API key + pull cycle all together)
+- Removed separate "Provider Pull Cycles" section
+- Added help text (title attributes) explaining pull cycle behavior
+- Every provider card now shows: Enable toggle, API Key field, Pull Cycle (seconds) input
+
+### Safety & Confirmation Features (4/4/26)
+- Unsaved changes detection with visual indicator (⊙ yellow circle)
+- beforeunload warning prevents accidental navigation with pending changes
+- Delete token confirmation dialog: "Delete token 'X'? This cannot be undone."
+- All destructive operations now require explicit confirmation
+
+### User Experience Improvements (4/4/26)
+- Ctrl+S (Cmd+S on Mac) keyboard shortcut to save settings instantly
+- Sticky Save/Discard buttons at top of form (always visible while scrolling)
+- Discard Changes button reverts to last saved state with confirmation
+- Copy to clipboard button for agent tokens (shows "✓ Copied!" feedback)
+- "Test All" button tests only enabled providers (avoids wasting API calls)
+- Per-field help text and better form organization with card-based layout
+
+### Token Management (4/4/26)
+- Token value shown once at creation with prominent warning
+- Copy button appears immediately after creation
+- Token list never shows full token value, only name/creation time/delete
+- Expandable token details card with scopes, timestamps, security warning
+- "Delete" button (clearer than "Revoke") with confirmation
 
 ## Task Status Delta
-- Completed: fallback framework for `current`, `forecast`, and `hourly` in `app/main.py`
-- Completed: WeatherAPI adapters (`current`, `forecast`, `hourly`) in `app/weather_client.py`
-- Completed: Tomorrow.io adapters (`current`, `forecast`, `hourly`) in `app/weather_client.py`
-- Completed: Visual Crossing adapters (`current`, `forecast`, `hourly`) in `app/weather_client.py`
-- Completed: provider capability metadata exposed via `/api/bootstrap` and `/api/settings`
-- Completed: initial fallback test file `tests/test_provider_fallback.py`
-- Completed: reliable local test harness (`scripts/test_harness.sh`) to remove host environment drift
-- Completed: setup/auth integration test suite `tests/test_setup_auth_integration.py` covering first-run bootstrap transition and auth login/logout paths
-- Completed: harness unit test stage expanded to run 16 tests across fallback + setup/auth integration
-- Completed: frontend smoke test `tests/frontend_smoke.py` for setup + first-run controls and map-provider options, now wired into harness
-- Completed: duplicate frontend `setupStatus()` declaration removed in `app/static/js/app.js`
+- Completed: Pull cycle controls integrated into provider cards
+- Completed: Unsaved changes detection with visual feedback
+- Completed: Delete confirmation dialogs for tokens
+- Completed: Test All Providers button (enabled-only)
+- Completed: Keyboard shortcut (Ctrl+S) for saving
+- Completed: Copy to clipboard for tokens
+- Completed: Persistent sticky Save/Discard buttons
+- Completed: Help text on confusing fields
+- Completed: Form state tracking with visual indicator
+- Completed: Tests updated to reflect new structure (test_harness, frontend_smoke)
 
 ## Current Risks
-- Host Python dependency drift can break local test execution even when container runtime is healthy.
-- Fallback chain complexity grows with each provider and needs automated coverage.
+- None at this phase; all features validated by test harness.
 
 ## Next Actions
-1. Add frontend smoke tests for setup/map-provider selection (T7.3).
-2. Final docs pass for setup/auth/providers/security with fresh-install walkthrough validation (T8.4).
-3. Start release engineering cut tasks (T9.1-T9.3): freeze policy, tag flow, checksums script.
+1. Final documentation review and release notes generation.
+2. Tag release and generate checksums.
+3. Deploy to production and monitor stability before public announcement.

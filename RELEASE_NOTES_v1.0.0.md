@@ -28,7 +28,19 @@ Release date: 2026-04-04
 
 - Added full-screen first-run overlay that blocks dashboard until setup is saved.
 - Keyless providers default enabled; keyed providers are opt-in by API key.
-- Setup panel remains editable after install.
+- Setup panel remains editable after install with organized card-based layout.
+- **Admin Panel Enhancements**:
+  - Provider cards now include enable toggle, API key field, and pull cycle control all together
+  - Per-provider pull cycles (seconds) let you tune update frequency without restarting
+  - "Test All Providers" button validates all enabled providers with one click (avoids wasting API calls on disabled ones)
+  - Individual "Test" buttons per provider for quick validation
+  - Unsaved changes detection with yellow indicator (⊙) prevents data loss
+  - Ctrl+S (Cmd+S on Mac) keyboard shortcut saves settings instantly
+  - Sticky Save/Discard buttons visible at all times while scrolling
+  - Agent token copy-to-clipboard button with visual feedback
+  - Delete confirmation dialogs for tokens prevent accidental removal
+  - Token values shown once at creation, never persisted or shown in list view
+  - Expandable token details with scopes, timestamps, and security notes
 - Added client-side coordinate validation in setup flows.
 
 ### Security and Auth
