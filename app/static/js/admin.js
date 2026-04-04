@@ -379,10 +379,10 @@ function renderTokenList(items) {
                                 ${item.name || 'Agent Token'}
                                 <span style="font-size: 0.85em; margin-left: 8px; padding: 2px 6px; background: ${revoked === 'revoked' ? 'rgba(200,100,100,0.3)' : 'rgba(100,200,100,0.3)'}; border-radius: 3px;">${revoked.toUpperCase()}</span>
                             </div>
-                            <div style="font-size: 0.85em; color: #888; margin-top: 4px; font-family: monospace;">ID: ${item.id}</div>
+                            <div style="font-size: 0.85em; color: #888; margin-top: 4px; font-family: monospace;">Created ${created}</div>
                         </div>
-                        <button id="${expandId}" class="map-btn" type="button" style="min-width: 80px;">Expand</button>
-                        <button class="map-btn" data-token-id="${item.id}" type="button" ${item.revoked ? 'disabled' : ''}>Revoke</button>
+                        <button id="${expandId}" class="map-btn" type="button" style="min-width: 80px;">Details</button>
+                        <button class="map-btn" data-token-id="${item.id}" type="button" ${item.revoked ? 'disabled' : ''}>Delete</button>
                     </div>
                     <div id="${detailsId}" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.9em;">
@@ -398,6 +398,9 @@ function renderTokenList(items) {
                                 <div style="color: #888; margin-bottom: 4px;">Expires</div>
                                 <div>${exp}</div>
                             </div>
+                        </div>
+                        <div style="margin-top: 12px; padding: 8px; background: rgba(255,200,100,0.2); border-left: 3px solid #ffc864; border-radius: 3px; font-size: 0.85em; color: #ddd;">
+                            ⚠️ Token value is only shown once during creation and never stored.
                         </div>
                     </div>
                 </div>`;
@@ -474,8 +477,8 @@ async function createAgentToken() {
         });
         const tokenEl = document.getElementById('agent-token-value');
         tokenEl.style.display = 'block';
-        tokenEl.textContent = `Token (copy now, shown once):\n${data.token}`;
-        setStatus('agent-token-status', `Created token ${data.id}.`, 'ok');
+        tokenEl.textContent = `⚠️ COPY NOW - Token shown ONLY once and never again:\n\n${data.token}`;
+        setStatus('agent-token-status', `✓ Created token "${name}". Copy the token above before leaving this page!`, 'ok');
         await loadAgentTokens();
     } catch (err) {
         setStatus('agent-token-status', `Create failed: ${err.message}`, 'warn');
