@@ -121,7 +121,31 @@ class WeatherCache:
 
     def __init__(self, db_path: str = "cache.db"):
         self.db_path = Path(db_path)
+        self._ttl_overrides: Dict[str, int] = {}
         self._init_db()
+
+    def set_ttl_overrides(self, overrides: Dict[str, Any] | None):
+        """Set runtime cache-type TTL overrides (seconds)."""
+        cleaned: Dict[str, int] = {}
+        for key, raw in (overrides or {}).items():
+            try:
+                ttl = int(raw)
+            except Exception:
+                continue
+            if ttl <= 0:
+                continue
+            cleaned[str(key)] = ttl
+        self._ttl_overrides = cleaned
+
+    def resolve_ttl(self, cache_type: str, threat_level: str = "default", fallback: int = 900) -> int:
+        """Resolve effective TTL including runtime overrides."""
+        if cache_type in self._ttl_overrides:
+            return int(self._ttl_overrides[cache_type])
+
+        base = self._get_ttl(cache_type, threat_level)
+        if base is None:
+            return int(fallback)
+        return int(base)
 
     def _init_db(self):
         """Create cache table if it doesn't exist."""
@@ -167,7 +191,7 @@ class WeatherCache:
         Returns:
             Cached data if valid, None if expired or not found
         """
-        ttl = self._get_ttl(cache_type, threat_level)
+        ttl = self.resolve_ttl(cache_type, threat_level)
         now = int(time.time())
 
         with sqlite3.connect(self.db_path) as conn:

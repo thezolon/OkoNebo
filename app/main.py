@@ -170,7 +170,7 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     global OWM_KEY, PWS_PROVIDER, PWS_KEY, PWS_STATIONS, ALERT_LOCATIONS
     global AUTH_ENABLED, AUTH_REQUIRE_VIEWER_LOGIN, AUTH_USERS, AUTH_TOKEN_SECRET
     global PROVIDERS, FIRST_RUN_COMPLETE, MAP_PROVIDER
-    global AGENT_TOKENS, REVOKED_AGENT_TOKEN_IDS
+    global AGENT_TOKENS, REVOKED_AGENT_TOKEN_IDS, PROVIDER_PULL_CYCLES
 
     runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
 
@@ -258,6 +258,10 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     PROVIDERS = provider_cfg
     map_provider = str(runtime_map.get("provider") or cfg.get("map", {}).get("provider") or "esri_street")
     MAP_PROVIDER = map_provider if map_provider in MAP_PROVIDER_IDS else "esri_street"
+
+    runtime_cache = runtime_cfg.get("cache", {}) if isinstance(runtime_cfg.get("cache", {}), dict) else {}
+    provider_cycles_raw = runtime_cache.get("provider_ttl_seconds", {}) if isinstance(runtime_cache.get("provider_ttl_seconds", {}), dict) else {}
+    PROVIDER_PULL_CYCLES = wc.set_provider_pull_cycles(provider_cycles_raw)
 
     FIRST_RUN_COMPLETE = bool(SECURE_STORE.get_json("bootstrap.first_run_complete", False))
 
@@ -1350,6 +1354,11 @@ async def api_settings_get():
             "admin_user": next((u.get("username") for u in AUTH_USERS if u.get("role") == "admin"), "admin"),
             "viewer_user": next((u.get("username") for u in AUTH_USERS if u.get("role") == "viewer"), "viewer"),
         },
+        "cache": {
+            "provider_ttl_seconds": PROVIDER_PULL_CYCLES,
+            "provider_ttl_defaults": wc.get_provider_pull_cycle_defaults(),
+            "provider_ttl_bounds": wc.get_provider_pull_cycle_bounds(),
+        },
         "secrets_source": {
             "owm": "env" if os.getenv("OWM_API_KEY") else "config",
             "pws": "env" if os.getenv("PWS_API_KEY") else "config",
@@ -1504,6 +1513,14 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
         map_cfg["provider"] = chosen_map_provider
         cfg["map"] = map_cfg
 
+        cache_payload = payload.get("cache", {}) if isinstance(payload.get("cache", {}), dict) else {}
+        provider_ttl_payload = (
+            cache_payload.get("provider_ttl_seconds", {})
+            if isinstance(cache_payload.get("provider_ttl_seconds", {}), dict)
+            else {}
+        )
+        provider_ttl_seconds = wc.set_provider_pull_cycles(provider_ttl_payload)
+
         SECURE_STORE.set_json("auth.users", users)
 
         runtime_settings = {
@@ -1518,6 +1535,9 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
                 "require_viewer_login": bool(auth_cfg.get("require_viewer_login", False)),
                 "admin_user": next((u.get("username") for u in users if u.get("role") == "admin"), "admin"),
                 "viewer_user": next((u.get("username") for u in users if u.get("role") == "viewer"), "viewer"),
+            },
+            "cache": {
+                "provider_ttl_seconds": provider_ttl_seconds,
             },
         }
         SECURE_STORE.set_json("settings.runtime", runtime_settings)

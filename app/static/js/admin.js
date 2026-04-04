@@ -12,6 +12,90 @@ const PROVIDER_IDS = [
 
 const AUTH_TOKEN_STORAGE_KEY = 'weatherapp.auth.token';
 let AUTH_MODE = { enabled: false, require_viewer_login: false };
+let PROVIDER_TTL_DEFAULTS = {};
+let PROVIDER_TTL_BOUNDS = { min_seconds: 60, max_seconds: 86400 };
+
+const PULL_CYCLE_LABELS = {
+    nws: 'NWS',
+    openweather: 'OpenWeather',
+    pws: 'PWS',
+    tomorrow: 'Tomorrow.io',
+    meteomatics: 'Meteomatics',
+    weatherapi: 'WeatherAPI',
+    visualcrossing: 'Visual Crossing',
+    aviationweather: 'AviationWeather',
+    noaa_tides: 'NOAA Tides',
+};
+
+function estimateCallsPerHour(seconds) {
+    const safe = Math.max(1, Number(seconds) || 1);
+    return Math.round((3600 / safe) * 10) / 10;
+}
+
+function estimateCallsPerDay(seconds) {
+    const safe = Math.max(1, Number(seconds) || 1);
+    return Math.round((86400 / safe) * 10) / 10;
+}
+
+function clampCycle(seconds) {
+    const min = Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60);
+    const max = Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400);
+    const raw = Number(seconds);
+    if (!Number.isFinite(raw)) return min;
+    return Math.min(max, Math.max(min, Math.round(raw)));
+}
+
+function renderProviderPullCycles(values = {}) {
+    const host = document.getElementById('provider-pullcycle-list');
+    if (!host) return;
+
+    const ids = Object.keys(PULL_CYCLE_LABELS);
+    host.innerHTML = ids.map((providerId) => {
+        const label = PULL_CYCLE_LABELS[providerId] || providerId;
+        const defaultVal = Number(PROVIDER_TTL_DEFAULTS?.[providerId] || 300);
+        const value = clampCycle(values?.[providerId] ?? defaultVal);
+        return `
+            <div class="setup-row"><span class="setup-lbl">${label}</span>
+                <input
+                    id="pullcycle-${providerId}"
+                    class="setup-input"
+                    type="number"
+                    min="${Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60)}"
+                    max="${Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400)}"
+                    value="${value}"
+                    data-provider-id="${providerId}"
+                    style="max-width:170px;"
+                >
+                <span id="pullcycle-meta-${providerId}" class="pws-meta" style="margin-left:8px;">~${estimateCallsPerHour(value)}/hour • ~${estimateCallsPerDay(value)}/day</span>
+            </div>
+        `;
+    }).join('');
+
+    host.querySelectorAll('input[data-provider-id]').forEach((input) => {
+        const updateMeta = () => {
+            const pid = input.getAttribute('data-provider-id');
+            if (!pid) return;
+            const value = clampCycle(input.value);
+            input.value = String(value);
+            const meta = document.getElementById(`pullcycle-meta-${pid}`);
+            if (meta) {
+                meta.textContent = `~${estimateCallsPerHour(value)}/hour • ~${estimateCallsPerDay(value)}/day`;
+            }
+        };
+        input.addEventListener('change', updateMeta);
+        input.addEventListener('input', updateMeta);
+    });
+}
+
+function collectProviderPullCycles() {
+    const result = {};
+    Object.keys(PULL_CYCLE_LABELS).forEach((providerId) => {
+        const input = document.getElementById(`pullcycle-${providerId}`);
+        if (!input) return;
+        result[providerId] = clampCycle(input.value);
+    });
+    return result;
+}
 
 function getToken() {
     try { return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ''; } catch (_) { return ''; }
@@ -144,6 +228,11 @@ function fillSettings(settings) {
     document.getElementById('setup-auth-viewer-user').value = settings?.auth?.viewer_user || 'viewer';
     document.getElementById('setup-auth-admin-pass').value = '';
     document.getElementById('setup-auth-viewer-pass').value = '';
+
+    PROVIDER_TTL_DEFAULTS = settings?.cache?.provider_ttl_defaults || PROVIDER_TTL_DEFAULTS;
+    PROVIDER_TTL_BOUNDS = settings?.cache?.provider_ttl_bounds || PROVIDER_TTL_BOUNDS;
+    renderProviderPullCycles(settings?.cache?.provider_ttl_seconds || {});
+    setStatus('provider-pullcycle-status', 'Provider pull cycles loaded.', 'ok');
 }
 
 async function loadSettings() {
@@ -232,14 +321,19 @@ async function saveSettings() {
             viewer_username: document.getElementById('setup-auth-viewer-user').value.trim(),
             viewer_password: document.getElementById('setup-auth-viewer-pass').value.trim(),
         },
+        cache: {
+            provider_ttl_seconds: collectProviderPullCycles(),
+        },
     };
 
     try {
         await api('/settings', 'POST', payload);
         setStatus('setup-status', 'Settings saved.', 'ok');
+        setStatus('provider-pullcycle-status', 'Provider pull cycles saved.', 'ok');
         await loadSettings();
     } catch (err) {
         setStatus('setup-status', `Save failed: ${err.message}`, 'warn');
+        setStatus('provider-pullcycle-status', `Save failed: ${err.message}`, 'warn');
     }
 }
 

@@ -28,6 +28,37 @@ _UPSTREAM_CALL_STATS: dict[str, int] = {
     "pws_history": 0,
 }
 
+PROVIDER_PULL_CYCLE_DEFAULTS: dict[str, int] = {
+    "nws": 300,
+    "openweather": 600,
+    "pws": 120,
+    "tomorrow": 300,
+    "meteomatics": 300,
+    "weatherapi": 300,
+    "visualcrossing": 300,
+    "aviationweather": 600,
+    "noaa_tides": 1800,
+}
+
+PROVIDER_PULL_CYCLE_BOUNDS: dict[str, int] = {
+    "min_seconds": 60,
+    "max_seconds": 86400,
+}
+
+PROVIDER_PULL_CYCLE_CACHE_TYPES: dict[str, list[str]] = {
+    "nws": ["current_nws", "forecast_nws", "hourly_nws", "alerts_nws"],
+    "openweather": ["owm_onecall"],
+    "pws": ["pws_current", "pws_trend"],
+    "tomorrow": ["current_tomorrow", "forecast_tomorrow", "hourly_tomorrow"],
+    "meteomatics": ["current_meteomatics"],
+    "weatherapi": ["current_weatherapi", "forecast_weatherapi", "hourly_weatherapi"],
+    "visualcrossing": ["current_visualcrossing", "forecast_visualcrossing", "hourly_visualcrossing"],
+    "aviationweather": ["current_aviationweather"],
+    "noaa_tides": ["tides_noaa"],
+}
+
+_ACTIVE_PROVIDER_PULL_CYCLES = dict(PROVIDER_PULL_CYCLE_DEFAULTS)
+
 
 def _bump_upstream_call(name: str) -> None:
     _UPSTREAM_CALL_STATS[name] = _UPSTREAM_CALL_STATS.get(name, 0) + 1
@@ -46,6 +77,28 @@ def get_upstream_call_stats() -> dict[str, Any]:
         "counts": counts,
         "total": sum(counts.values()),
     }
+
+
+def get_provider_pull_cycle_defaults() -> dict[str, int]:
+    return dict(PROVIDER_PULL_CYCLE_DEFAULTS)
+
+
+def get_provider_pull_cycle_bounds() -> dict[str, int]:
+    return dict(PROVIDER_PULL_CYCLE_BOUNDS)
+
+
+def get_provider_pull_cycles() -> dict[str, int]:
+    return dict(_ACTIVE_PROVIDER_PULL_CYCLES)
+
+
+def _sanitize_pull_cycle_seconds(value: Any, fallback: int) -> int:
+    try:
+        n = int(value)
+    except Exception:
+        n = int(fallback)
+    n = max(PROVIDER_PULL_CYCLE_BOUNDS["min_seconds"], n)
+    n = min(PROVIDER_PULL_CYCLE_BOUNDS["max_seconds"], n)
+    return n
 
 # ---------------------------------------------------------------------------
 # Hybrid cache: async-safe in-memory + SQLite persistence
@@ -75,6 +128,12 @@ class HybridTTLCache:
         self._threat_level = "default"
         self._current_alerts: list[dict] = []
 
+    def set_cache_type_ttl_overrides(self, overrides: dict[str, int]) -> None:
+        self._db.set_ttl_overrides(overrides)
+
+    def effective_ttl(self, cache_type: str, fallback_ttl: int) -> int:
+        return self._db.resolve_ttl(cache_type, self._threat_level, fallback_ttl)
+
     async def get_refresh_lock(self, key: str) -> asyncio.Lock:
         """Return a stable per-key lock used to coalesce cache refreshes."""
         async with self._refresh_locks_guard:
@@ -99,7 +158,7 @@ class HybridTTLCache:
             if db_value is not None:
                 # Cache it in memory for fast subsequent access
                 async with self._lock:
-                    self._store[key] = _Entry(db_value, 300)  # Keep in memory for 5 min
+                    self._store[key] = _Entry(db_value, self.effective_ttl(cache_type, 300))
                 return db_value
         except Exception:
             pass  # SQLite read error; continue to stale fallback
@@ -147,6 +206,27 @@ class HybridTTLCache:
 
 
 _cache = HybridTTLCache()
+
+
+def set_provider_pull_cycles(cycles: dict[str, Any] | None) -> dict[str, int]:
+    global _ACTIVE_PROVIDER_PULL_CYCLES
+
+    merged = dict(PROVIDER_PULL_CYCLE_DEFAULTS)
+    incoming = cycles or {}
+    for provider, default_seconds in PROVIDER_PULL_CYCLE_DEFAULTS.items():
+        merged[provider] = _sanitize_pull_cycle_seconds(incoming.get(provider), default_seconds)
+
+    cache_overrides: dict[str, int] = {}
+    for provider, seconds in merged.items():
+        for cache_type in PROVIDER_PULL_CYCLE_CACHE_TYPES.get(provider, []):
+            cache_overrides[cache_type] = int(seconds)
+
+    _ACTIVE_PROVIDER_PULL_CYCLES = merged
+    _cache.set_cache_type_ttl_overrides(cache_overrides)
+    return dict(_ACTIVE_PROVIDER_PULL_CYCLES)
+
+
+set_provider_pull_cycles(None)
 
 # ---------------------------------------------------------------------------
 # NWS HTTP helpers
@@ -214,7 +294,8 @@ async def _get_or_refresh_shared(
 
         try:
             value = await producer()
-            await _cache.set(key, value, ttl=ttl, cache_type=cache_type)
+            effective_ttl = _cache.effective_ttl(cache_type, int(ttl))
+            await _cache.set(key, value, ttl=effective_ttl, cache_type=cache_type)
             return value
         except Exception:
             stale = await _cache.get_stale(key)

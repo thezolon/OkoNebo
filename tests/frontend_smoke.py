@@ -71,6 +71,8 @@ def main() -> int:
         "setup-home-lon",
         "setup-auth-enabled",
         "setup-auth-admin-user",
+        "provider-pullcycle-section",
+        "provider-pullcycle-list",
         "agent-token-section",
         "agent-token-create-btn",
     ]:
