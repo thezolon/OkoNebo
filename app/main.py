@@ -889,6 +889,16 @@ async def api_pws_trend(hours: int = Query(default=3, ge=1, le=24)):
 
 
 @app.get(
+    "/api/stats",
+    summary="Upstream provider call stats",
+    description="Returns per-provider upstream call counts since server start.",
+    tags=["Debug"],
+)
+async def api_stats():
+    return wc.get_upstream_call_stats()
+
+
+@app.get(
     "/api/debug",
     summary="Debug and metrics snapshot",
     description=(
