@@ -1,4 +1,4 @@
-# Contributing to Storm Dashboard
+# Contributing to OkoNebo
 
 Thank you for your interest in contributing!  This project is MIT-licensed and welcomes issues and pull requests from the community.
 
@@ -12,15 +12,15 @@ Thank you for your interest in contributing!  This project is MIT-licensed and w
 ## Development Setup
 
 ### Prerequisites
-- Python 3.11+
-- Docker + Docker Compose (for integration tests)
+- Docker + Docker Compose (required)
+- Python 3.11+ (optional, only for backend-only local development)
 
 ### Local quickstart
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourname/weatherapp.git
-cd weatherapp
+git clone https://github.com/thezolon/OkoNebo.git
+cd OkoNebo
 
 # Copy and edit sample config
 cp config.yaml.example config.yaml   # edit lat/lon at minimum
@@ -28,7 +28,7 @@ cp config.yaml.example config.yaml   # edit lat/lon at minimum
 # Run the full test harness (venv created automatically)
 bash scripts/test_harness.sh
 
-# Start the app without Docker
+# Optional: backend-only run for API debugging
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
@@ -82,7 +82,7 @@ All PRs are gated on CI (`.github/workflows/ci.yml`).  Failing CI blocks merge.
 
 ## Reporting Bugs
 
-Open a [GitHub Issue](https://github.com/yourname/weatherapp/issues) and fill in the bug report template.  For security issues, see [SECURITY.md](SECURITY.md) instead.
+Open a [GitHub Issue](https://github.com/thezolon/OkoNebo/issues) and fill in the bug report template.  For security issues, see [SECURITY.md](SECURITY.md) instead.
 
 ## Feature Requests
 

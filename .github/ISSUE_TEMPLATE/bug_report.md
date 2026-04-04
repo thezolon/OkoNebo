@@ -19,8 +19,8 @@ labels: bug
 <!-- What actually happened. Include error messages or screenshots. -->
 
 ## Environment
-- WeatherApp version / commit:
-- Python version:
+- OkoNebo version / commit:
+- Host runtime (Docker Desktop / Docker Engine version):
 - Docker version (if using Docker):
 - Browser (if frontend issue):
 - OS:

@@ -57,8 +57,10 @@ For a complete step-by-step guide see [INSTALL.md](INSTALL.md).
 ### Raspberry Pi
 
 ```bash
-# On the Pi, after extracting the release package:
-cd weatherapp-pi-release-*
+# Full deployment guide (recommended):
+cat RASPBERRY_PI_DEPLOYMENT.md
+
+# Quick start on a Pi host:
 bash deploy-on-pi.sh
 ```
 

@@ -13,7 +13,7 @@
 
 Please report security issues privately by emailing **zolon@hackthemind.org** with:
 
-- A clear subject line: `[SECURITY] WeatherApp — <short description>`
+- A clear subject line: `[SECURITY] OkoNebo — <short description>`
 - A description of the vulnerability and its potential impact.
 - Steps to reproduce or a proof-of-concept (if available).
 - Your preferred disclosure timeline.
@@ -39,4 +39,4 @@ Items out of scope:
 - **API keys** are stored encrypted using Fernet symmetric encryption in `secure_settings.db`.  The encryption key is derived from the `SETTINGS_ENCRYPTION_KEY` env var (or `auth.token_secret` as fallback).  Keep this value secret.
 - **Auth tokens** are HMAC-SHA256 signed with `AUTH_TOKEN_SECRET`.  Use a long random value in production.  Tokens are revocable via `POST /api/auth/logout`.
 - **CORS** is currently set to `allow_origins=["*"]`.  Tighten this in production if the app is exposed on the public internet.
-- Run `python scripts/security_check.py` before every release to scan for leaked secrets.
+- Run `bash scripts/test_harness.sh` (or at minimum `python scripts/security_check.py`) before every release to scan for leaked secrets.

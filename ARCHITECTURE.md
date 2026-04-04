@@ -1,16 +1,16 @@
 # Architecture Overview
 
-Storm Dashboard is a self-hostable weather web application built on:
+OkoNebo is a self-hostable weather web application built on:
 
 - **Backend**: FastAPI (Python 3.11+), served via Uvicorn.
 - **Frontend**: Vanilla HTML/CSS/JavaScript — no build step, no framework.
 - **Persistence**: SQLite via `cache_db.py` (weather cache) and `secure_settings.py` (encrypted settings).
-- **Deployment**: Docker Compose (single-container, port 8000).
+- **Deployment**: Docker Compose (single container, host port `8888` mapped to container port `8000`).
 
 ## Directory Structure
 
 ```
-weatherapp/
+OkoNebo/
 ├── app/
 │   ├── main.py            # FastAPI application, routes, middleware
 │   ├── weather_client.py  # All upstream provider HTTP clients + caching
@@ -23,11 +23,18 @@ weatherapp/
 ├── scripts/
 │   ├── test_harness.sh    # Full quality gate (venv + Docker)
 │   ├── security_check.py  # Secret leak scanner
-│   └── health-check.sh    # Docker health probe
+│   ├── reset.sh           # Linux/macOS factory reset helper
+│   └── checksums.sh       # Release checksum generator
 ├── tests/
-│   ├── test_provider_fallback.py   # Unit tests (12 tests)
-│   └── integration_smoke.py       # Live integration smoke tests
+│   ├── test_provider_fallback.py        # Provider fallback + auth guard tests
+│   ├── test_setup_auth_integration.py   # Setup/auth integration tests
+│   ├── integration_smoke.py             # Live API smoke tests
+│   └── frontend_smoke.py                # Frontend setup/radar control smoke tests
 ├── .github/workflows/ci.yml        # GitHub Actions CI
+├── start.sh               # Linux/macOS Docker start helper
+├── start.bat              # Windows Docker start helper
+├── health-check.ps1       # Windows health probe
+├── reset.ps1              # Windows factory reset helper
 ├── config.yaml            # Location, auth, provider toggles
 ├── docker-compose.yml
 └── Dockerfile

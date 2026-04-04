@@ -1,7 +1,7 @@
-# WeatherApp v1.0 Execution Board
+# OkoNebo v1.0 Execution Board
 
 ## Release Objective
-Ship a public, self-hostable, open-source WeatherApp `v1.0.0` with:
+Ship a public, self-hostable, open-source OkoNebo `v1.0.0` with:
 - first-run setup flow
 - optional auth with admin/viewer roles
 - encrypted runtime/provider secret storage
