@@ -112,6 +112,7 @@ For fresh installs with unset location/provider keys, weather data endpoints may
 - [app/static/js/app.js](app/static/js/app.js): setup flows, rendering, diagnostics
 - [tests/test_provider_fallback.py](tests/test_provider_fallback.py): fallback and auth guard unit tests
 - [tests/integration_smoke.py](tests/integration_smoke.py): integration endpoint smoke checks
+- [tests/frontend_smoke.py](tests/frontend_smoke.py): setup/map-provider frontend smoke checks
 - [health-check.sh](health-check.sh): release/ops health gate
 
 ## Verification Commands

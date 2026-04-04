@@ -19,6 +19,7 @@
 - Completed: reliable local test harness (`scripts/test_harness.sh`) to remove host environment drift
 - Completed: setup/auth integration test suite `tests/test_setup_auth_integration.py` covering first-run bootstrap transition and auth login/logout paths
 - Completed: harness unit test stage expanded to run 16 tests across fallback + setup/auth integration
+- Completed: frontend smoke test `tests/frontend_smoke.py` for setup + first-run controls and map-provider options, now wired into harness
 - Completed: duplicate frontend `setupStatus()` declaration removed in `app/static/js/app.js`
 
 ## Current Risks

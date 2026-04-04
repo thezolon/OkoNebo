@@ -29,6 +29,7 @@ echo "[harness] compile checks"
   scripts/security_check.py \
   tests/test_provider_fallback.py \
   tests/test_setup_auth_integration.py \
+  tests/frontend_smoke.py \
   tests/integration_smoke.py
 
 echo "[harness] unit tests"
@@ -56,6 +57,9 @@ fi
 
 echo "[harness] integration smoke"
 WEATHERAPP_BASE_URL="${BASE_URL}" "${PY_BIN}" tests/integration_smoke.py
+
+echo "[harness] frontend smoke"
+WEATHERAPP_BASE_URL="${BASE_URL}" "${PY_BIN}" tests/frontend_smoke.py
 
 echo "[harness] secret leak check"
 WEATHERAPP_BASE_URL="${BASE_URL}" "${PY_BIN}" scripts/security_check.py
