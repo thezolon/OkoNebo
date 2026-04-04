@@ -464,7 +464,16 @@ async function testProvider(providerId) {
     }
 
     try {
-        const data = await api(`/test-provider?provider=${encodeURIComponent(providerId)}`);
+        // Read API key from form if present (unsaved changes)
+        const keyEl = document.getElementById(`setup-provider-${providerId}-key`);
+        const formKey = keyEl?.value?.trim() || null;
+
+        let url = `/test-provider?provider=${encodeURIComponent(providerId)}`;
+        if (formKey) {
+            url += `&api_key=${encodeURIComponent(formKey)}`;
+        }
+
+        const data = await api(url);
         if (resultEl) {
             if (data.ok) {
                 resultEl.textContent = `✓ ${data.message}`;

@@ -1558,7 +1558,7 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
     description="Tests whether a provider API is working with the configured API key and location.",
     tags=["Weather"],
 )
-async def api_test_provider(provider: str = Query("nws"), request: Request = None):
+async def api_test_provider(provider: str = Query("nws"), api_key: str | None = Query(None), request: Request = None):
     if not AUTH_ENABLED:
         pass  # Allow in local mode
     elif request:
@@ -1575,19 +1575,20 @@ async def api_test_provider(provider: str = Query("nws"), request: Request = Non
     if not PROVIDERS.get(provider, {}).get("enabled"):
         raise HTTPException(status_code=400, detail=f"Provider {provider} is not enabled")
 
-    # Get API key if needed
-    api_key = None
-    if PROVIDER_META.get(provider, {}).get("requires_api_key"):
-        api_key = _provider_api_key(provider)
-        if not api_key:
-            raise HTTPException(status_code=400, detail=f"Provider {provider} requires an API key but none is configured")
+    # Get API key: from parameter (unsaved form), then from persistent storage
+    test_api_key = api_key
+    if not test_api_key:
+        test_api_key = _provider_api_key(provider) if PROVIDER_META.get(provider, {}).get("requires_api_key") else None
+
+    if PROVIDER_META.get(provider, {}).get("requires_api_key") and not test_api_key:
+        raise HTTPException(status_code=400, detail=f"Provider {provider} requires an API key but none is configured")
 
     try:
         result = await wc.test_provider(
             provider_id=provider,
             lat=LAT,
             lon=LON,
-            api_key=api_key,
+            api_key=test_api_key,
             user_agent=USER_AGENT,
         )
         if result.get("ok"):
