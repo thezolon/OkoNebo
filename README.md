@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/thezolon/OkoNebo/actions/workflows/ci.yml/badge.svg)](https://github.com/thezolon/OkoNebo/actions/workflows/ci.yml)
 
-Self-hosted weather dashboard and local API for your configured monitoring location. Current conditions, active alerts, 7-day forecast, hourly trend, radar, personal weather stations, aviation METAR, and coastal tide predictions - all from one Docker container, no cloud dependency required.
+OkoNebo is a self-hosted weather dashboard and local API for your location. It combines current conditions, alerts, 7-day forecast, hourly trend, radar, PWS data, aviation METAR, and coastal tide predictions in one Docker service.
 
 ## Features
 
@@ -42,8 +42,7 @@ docker compose up -d --build
 
 ### 3. Open the UI
 
-Browse to **http://localhost:8888** - a first-run overlay will prompt for your location and any optional provider API keys.
-After saving, the dashboard loads and begins polling.
+Open **http://localhost:8888**. On a fresh install, you will get a first-run setup screen for location and optional provider keys. Save once, and the dashboard starts loading live data.
 
 For a complete step-by-step guide see [INSTALL.md](INSTALL.md).
 
@@ -66,8 +65,8 @@ bash deploy-on-pi.sh
 
 ## Configuration
 
-Copy [config.yaml.example](config.yaml.example) to `config.yaml`. The minimal required fields are `lat` and `lon`.
-All settings can also be changed at runtime through the in-app Setup panel - no restart required.
+Copy [config.yaml.example](config.yaml.example) to `config.yaml`. The only required fields are `lat` and `lon`.
+Most settings can also be changed later in the in-app Setup panel with no restart.
 
 ### Environment variables (optional)
 
@@ -148,7 +147,7 @@ The CI pipeline (`.github/workflows/ci.yml`) runs on every push and PR to `main`
 
 ## Operations Notes
 
-- Weather data endpoints return `502` when no providers are configured or all providers fail - this is expected on a fresh install before location is set.
+- Weather endpoints can return `502` before setup is completed or when all providers fail. That is expected behavior, not a crash.
 - The browser stores a last-known-good state so the UI can recover after reloads or brief outages.
 - Frame-cache cleanup runs automatically and keeps browser storage bounded.
 - Docker build context is trimmed via `.dockerignore`; local virtualenv and editor files do not end up in the image.
@@ -196,7 +195,7 @@ curl http://localhost:8888/api/stats
 ### Secret leak check
 
 ```bash
-python3 scripts/security_check.py
+python scripts/security_check.py
 ```
 
 Expected: `SECRET LEAK CHECK: OK`

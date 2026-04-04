@@ -1,6 +1,6 @@
 # OkoNebo — Fresh Install Walkthrough
 
-A step-by-step guide from zero to a working dashboard on any supported platform.
+This guide gets you from a fresh checkout to a running dashboard on Linux, macOS, or Windows.
 
 **Python is not required on the host. Docker handles everything.**
 
@@ -84,7 +84,7 @@ bash health-check.sh
 .\health-check.ps1
 ```
 
-Expected output:
+Typical output:
 ```
 Config endpoint:    OK (200)
 Bootstrap endpoint: OK (200)
@@ -108,7 +108,7 @@ If this is a remote machine, replace `localhost` with that machine's IP.
 
 ### What you should see
 
-A **first-run overlay** titled "Welcome to OkoNebo" covers the page. This overlay blocks the dashboard until a valid location is entered and saved.
+You should see a **first-run overlay** titled "Welcome to OkoNebo". It stays in place until valid location values are saved.
 
 ---
 
@@ -129,7 +129,7 @@ A **first-run overlay** titled "Welcome to OkoNebo" covers the page. This overla
 | Map Provider | Esri (default), OSM, CARTO Light, CARTO Dark |
 | Provider API keys | WeatherAPI, Tomorrow.io, Visual Crossing, etc. |
 
-Click **Save & Continue**. The overlay disappears and the dashboard loads.
+Click **Save & Continue**. The overlay closes and the dashboard starts loading.
 
 > If you see a validation error ("Latitude must be between -90 and 90"), you entered degrees/minutes/seconds instead of decimal degrees.
 
@@ -148,7 +148,7 @@ After the overlay closes you should see:
 5. **Radar** map centred on your location
 6. **Diagnostics** row at the bottom (provider name, response time)
 
-If any panel shows "No data" after 10 seconds, check logs. NWS is keyless and works immediately for US locations. For non-US, add a WeatherAPI or Tomorrow.io key via **Setup → Providers**.
+If any panel still shows "No data" after about 10 seconds, check logs. NWS is keyless and usually works right away for US locations. For non-US setups, add a WeatherAPI or Tomorrow.io key in **Setup → Providers**.
 
 ---
 
@@ -197,7 +197,7 @@ docker compose down && docker compose up -d
 
 ## Factory reset
 
-Normal rebuilds never wipe your data. To intentionally start over:
+Regular rebuilds do not wipe your data. Use reset only when you intentionally want a clean slate:
 
 **Linux / macOS:**
 ```bash

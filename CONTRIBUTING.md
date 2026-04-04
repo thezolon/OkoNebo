@@ -1,12 +1,12 @@
 # Contributing to OkoNebo
 
-Thank you for your interest in contributing!  This project is MIT-licensed and welcomes issues and pull requests from the community.
+Thanks for your interest in contributing. OkoNebo is MIT-licensed and welcomes issues and pull requests.
 
 ## Ground Rules
 
 - Be respectful and constructive.  See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 - Search existing issues before opening a new one.
-- One feature or fix per pull request — keep the diff reviewable.
+- One feature or fix per pull request. Smaller diffs are easier to review and merge.
 - New PRs should not break the test harness (`bash scripts/test_harness.sh`).
 
 ## Development Setup
@@ -15,7 +15,7 @@ Thank you for your interest in contributing!  This project is MIT-licensed and w
 - Docker + Docker Compose (required)
 - Python 3.11+ (optional, only for backend-only local development)
 
-### Local quickstart
+### Local Quickstart
 
 ```bash
 # Clone the repo
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open `http://localhost:8000` — the first-run wizard will appear on a new install.
+Open `http://localhost:8000`. On a fresh run, the first-run setup screen appears.
 
 ### Environment variables
 
@@ -70,7 +70,7 @@ bash scripts/test_harness.sh
 HARNESS_SKIP_DOCKER=1 bash scripts/test_harness.sh
 ```
 
-All PRs are gated on CI (`.github/workflows/ci.yml`).  Failing CI blocks merge.
+All PRs are gated on CI (`.github/workflows/ci.yml`). Failing checks block merge.
 
 ## Pull Request Process
 
@@ -86,8 +86,8 @@ Open a [GitHub Issue](https://github.com/thezolon/OkoNebo/issues) and fill in th
 
 ## Feature Requests
 
-Open an issue and describe:
-- What you want to achieve.
-- Whether you would like to implement it yourself.
+Open an issue and include:
+- What you want to achieve
+- Whether you want to implement it yourself
 
 Features that align with the [v1.0 Execution Board](V1_0_EXECUTION_BOARD.md) will be prioritised.
