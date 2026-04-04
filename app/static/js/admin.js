@@ -11,6 +11,7 @@ const PROVIDER_IDS = [
 ];
 
 const AUTH_TOKEN_STORAGE_KEY = 'weatherapp.auth.token';
+let AUTH_MODE = { enabled: false, require_viewer_login: false };
 
 function getToken() {
     try { return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ''; } catch (_) { return ''; }
@@ -60,6 +61,11 @@ function selectedScopes() {
 }
 
 async function loadAuthMe() {
+    if (!AUTH_MODE.enabled) {
+        setToken('');
+        setStatus('admin-auth-status', 'Authentication is disabled. Admin actions are open in local mode.', 'ok');
+        return;
+    }
     const token = getToken();
     if (!token) {
         setStatus('admin-auth-status', 'Not authenticated. Login as admin.', 'warn');
@@ -71,6 +77,18 @@ async function loadAuthMe() {
     } catch (err) {
         setToken('');
         setStatus('admin-auth-status', `Auth expired: ${err.message}`, 'warn');
+    }
+}
+
+async function loadAuthConfig() {
+    try {
+        const cfg = await api('/auth/config', 'GET', null, false);
+        AUTH_MODE = {
+            enabled: !!cfg?.enabled,
+            require_viewer_login: !!cfg?.require_viewer_login,
+        };
+    } catch (_) {
+        AUTH_MODE = { enabled: false, require_viewer_login: false };
     }
 }
 
@@ -269,6 +287,11 @@ function renderTokenList(items) {
 }
 
 async function loadAgentTokens() {
+    if (!AUTH_MODE.enabled) {
+        renderTokenList([]);
+        setStatus('agent-token-status', 'Agent tokens are available only when auth is enabled.', 'warn');
+        return;
+    }
     try {
         const data = await api('/agent-tokens');
         renderTokenList(data.tokens || []);
@@ -284,6 +307,10 @@ async function loadAgentTokens() {
 }
 
 async function createAgentToken() {
+    if (!AUTH_MODE.enabled) {
+        setStatus('agent-token-status', 'Enable auth first to create scoped agent tokens.', 'warn');
+        return;
+    }
     const name = document.getElementById('agent-token-name').value.trim() || 'Agent Token';
     const ttlHours = Number(document.getElementById('agent-token-ttl').value || '168');
     const scopes = selectedScopes();
@@ -314,6 +341,7 @@ async function init() {
     document.getElementById('setup-save-btn').addEventListener('click', saveSettings);
     document.getElementById('agent-token-create-btn').addEventListener('click', createAgentToken);
 
+    await loadAuthConfig();
     await loadAuthMe();
     await loadSettings();
     await loadAgentTokens();
