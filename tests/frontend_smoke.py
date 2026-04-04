@@ -66,13 +66,13 @@ def main() -> int:
     for required_id in [
         "setup-section",
         "setup-save-btn",
+        "setup-discard-btn",
         "setup-map-provider",
         "setup-home-lat",
         "setup-home-lon",
         "setup-auth-enabled",
         "setup-auth-admin-user",
-        "provider-pullcycle-section",
-        "provider-pullcycle-list",
+        "test-all-providers",
         "agent-token-section",
         "agent-token-create-btn",
     ]:

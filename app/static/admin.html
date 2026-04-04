@@ -83,122 +83,112 @@
                         </div>
 
                         <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; margin-top: 16px;">
+                            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                                <button id="test-all-providers" class="btn-refresh" type="button">Test All</button>
+                                <span id="test-all-status" class="pws-meta"></span>
+                            </div>
                             <div style="display: grid; gap: 16px;">
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">NWS</span>
-                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">NWS</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                        <div>
                                             <label class="ctrl-lbl"><input id="setup-provider-nws-enabled" type="checkbox"> Enable</label>
-                                            <button id="test-provider-nws" class="map-btn" type="button">Test</button>
-                                            <span id="test-result-nws" class="pws-meta"></span>
                                         </div>
+                                        <div>
+                                            <span class="setup-lbl">Pull Cycle (seconds)</span>
+                                            <input id="pullcycle-nws" class="setup-input" type="number" min="60" max="86400" value="300" style="width: 100%;" data-provider-id="nws" title="How often to check this provider for updates">
+                                        </div>
+                                        <button id="test-provider-nws" class="map-btn" type="button" style="grid-column: 1; cursor: pointer;">Test</button>
+                                        <span id="test-result-nws" class="pws-meta" style="grid-column: 2;"></span>
                                     </div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">OpenWeather</span>
-                                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <label class="ctrl-lbl"><input id="setup-provider-openweather-enabled" type="checkbox"> Enable</label>
-                                                <button id="test-provider-openweather" class="map-btn" type="button">Test</button>
-                                                <span id="test-result-openweather" class="pws-meta"></span>
-                                            </div>
-                                            <input id="setup-provider-openweather-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">OpenWeather</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-openweather-enabled" type="checkbox"> Enable</label></div>
+                                        <div><span class="setup-lbl">API Key</span><input id="setup-provider-openweather-key" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-openweather" class="setup-input" type="number" min="60" max="86400" value="600" style="width: 100%;" data-provider-id="openweather" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-openweather" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-openweather" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">PWS</span>
-                                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <label class="ctrl-lbl"><input id="setup-provider-pws-enabled" type="checkbox"> Enable</label>
-                                                <button id="test-provider-pws" class="map-btn" type="button">Test</button>
-                                                <span id="test-result-pws" class="pws-meta"></span>
-                                            </div>
-                                            <input id="setup-provider-pws-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">PWS</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-pws-enabled" type="checkbox"> Enable</label></div>
+                                        <div><span class="setup-lbl">API Key</span><input id="setup-provider-pws-key" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-pws" class="setup-input" type="number" min="60" max="86400" value="120" style="width: 100%;" data-provider-id="pws" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-pws" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-pws" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">Tomorrow.io</span>
-                                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <label class="ctrl-lbl"><input id="setup-provider-tomorrow-enabled" type="checkbox"> Enable</label>
-                                                <button id="test-provider-tomorrow" class="map-btn" type="button">Test</button>
-                                                <span id="test-result-tomorrow" class="pws-meta"></span>
-                                            </div>
-                                            <input id="setup-provider-tomorrow-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Tomorrow.io</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-tomorrow-enabled" type="checkbox"> Enable</label></div>
+                                        <div><span class="setup-lbl">API Key</span><input id="setup-provider-tomorrow-key" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-tomorrow" class="setup-input" type="number" min="60" max="86400" value="300" style="width: 100%;" data-provider-id="tomorrow" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-tomorrow" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-tomorrow" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">Meteomatics</span>
-                                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <label class="ctrl-lbl"><input id="setup-provider-meteomatics-enabled" type="checkbox"> Enable</label>
-                                                <button id="test-provider-meteomatics" class="map-btn" type="button">Test</button>
-                                                <span id="test-result-meteomatics" class="pws-meta"></span>
-                                            </div>
-                                            <input id="setup-provider-meteomatics-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Meteomatics</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-meteomatics-enabled" type="checkbox"> Enable</label></div>
+                                        <div><span class="setup-lbl">API Key</span><input id="setup-provider-meteomatics-key" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-meteomatics" class="setup-input" type="number" min="60" max="86400" value="300" style="width: 100%;" data-provider-id="meteomatics" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-meteomatics" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-meteomatics" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">WeatherAPI</span>
-                                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <label class="ctrl-lbl"><input id="setup-provider-weatherapi-enabled" type="checkbox"> Enable</label>
-                                                <button id="test-provider-weatherapi" class="map-btn" type="button">Test</button>
-                                                <span id="test-result-weatherapi" class="pws-meta"></span>
-                                            </div>
-                                            <input id="setup-provider-weatherapi-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">WeatherAPI</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-weatherapi-enabled" type="checkbox"> Enable</label></div>
+                                        <div><span class="setup-lbl">API Key</span><input id="setup-provider-weatherapi-key" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-weatherapi" class="setup-input" type="number" min="60" max="86400" value="300" style="width: 100%;" data-provider-id="weatherapi" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-weatherapi" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-weatherapi" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">Visual Crossing</span>
-                                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <label class="ctrl-lbl"><input id="setup-provider-visualcrossing-enabled" type="checkbox"> Enable</label>
-                                                <button id="test-provider-visualcrossing" class="map-btn" type="button">Test</button>
-                                                <span id="test-result-visualcrossing" class="pws-meta"></span>
-                                            </div>
-                                            <input id="setup-provider-visualcrossing-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Visual Crossing</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-visualcrossing-enabled" type="checkbox"> Enable</label></div>
+                                        <div><span class="setup-lbl">API Key</span><input id="setup-provider-visualcrossing-key" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-visualcrossing" class="setup-input" type="number" min="60" max="86400" value="300" style="width: 100%;" data-provider-id="visualcrossing" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-visualcrossing" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-visualcrossing" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">AviationWeather</span>
-                                        <div style="display: flex; gap: 8px; align-items: center;">
-                                            <label class="ctrl-lbl"><input id="setup-provider-aviationweather-enabled" type="checkbox"> Enable</label>
-                                            <button id="test-provider-aviationweather" class="map-btn" type="button">Test</button>
-                                            <span id="test-result-aviationweather" class="pws-meta"></span>
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">AviationWeather</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-aviationweather-enabled" type="checkbox"> Enable</label></div>
+                                        <div style="visibility: hidden;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-aviationweather" class="setup-input" type="number" min="60" max="86400" value="600" style="width: 100%;" data-provider-id="aviationweather" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-aviationweather" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-aviationweather" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
 
                                 <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center;">
-                                        <span style="font-weight: bold; color: #7dd3fc;">NOAA Tides</span>
-                                        <div style="display: flex; gap: 8px; align-items: center;">
-                                            <label class="ctrl-lbl"><input id="setup-provider-noaa_tides-enabled" type="checkbox"> Enable</label>
-                                            <button id="test-provider-noaa_tides" class="map-btn" type="button">Test</button>
-                                            <span id="test-result-noaa_tides" class="pws-meta"></span>
-                                        </div>
+                                    <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">NOAA Tides</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+                                        <div><label class="ctrl-lbl"><input id="setup-provider-noaa_tides-enabled" type="checkbox"> Enable</label></div>
+                                        <div style="visibility: hidden;"></div>
+                                        <div><span class="setup-lbl">Pull Cycle (s)</span><input id="pullcycle-noaa_tides" class="setup-input" type="number" min="60" max="86400" value="1800" style="width: 100%;" data-provider-id="noaa_tides" title="How often to check this provider for updates"></div>
+                                        <button id="test-provider-noaa_tides" class="map-btn" type="button" style="align-self: flex-end;">Test</button>
                                     </div>
+                                    <div id="test-result-noaa_tides" class="pws-meta" style="margin-top: 8px;"></div>
                                 </div>
                             </div>
                         </div>
@@ -229,21 +219,16 @@
                                 <div><span class="setup-lbl">Password</span><input id="setup-auth-viewer-pass" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
                             </div>
                         </div>
-                    <div class="setup-actions">
-                        <button id="setup-save-btn" class="btn-refresh" type="button">Save Settings</button>
+                    <div class="setup-actions" style="position: sticky; top: 0; background: rgba(5,9,14,0.95); padding: 12px; border-radius: 4px; z-index: 10; margin: 16px 0;">
+                        <button id="setup-save-btn" class="btn-refresh" type="button" title="Ctrl+S">💾 Save Settings</button>
+                        <button id="setup-discard-btn" class="map-btn" type="button" title="Reset to last saved state">↻ Discard Changes</button>
+                        <span id="unsaved-indicator" style="display: none; color: #fbbf24; font-weight: bold; margin-left: 8px;">● Unsaved changes</span>
                     </div>
                     <div id="setup-status" class="setup-status">Ready.</div>
                 </div>
             </section>
 
-            <section class="panel-sec" id="provider-pullcycle-section" style="margin-top: 16px;">
-                <div class="panel-sec-hdr">
-                    <h3>Provider Pull Cycles</h3>
-                </div>
-                <p class="pws-meta">Controls backend upstream pull cadence per provider. Viewer refresh only affects browser polling, not provider request rates.</p>
-                <div id="provider-pullcycle-list" class="setup-grid"></div>
-                <div id="provider-pullcycle-status" class="setup-status">Using default pull cycles.</div>
-            </section>
+
 
             <section class="panel-sec" id="agent-token-section" style="margin-top: 16px;">
                 <div class="panel-sec-hdr">

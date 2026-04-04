@@ -14,6 +14,8 @@ const AUTH_TOKEN_STORAGE_KEY = 'weatherapp.auth.token';
 let AUTH_MODE = { enabled: false, require_viewer_login: false };
 let PROVIDER_TTL_DEFAULTS = {};
 let PROVIDER_TTL_BOUNDS = { min_seconds: 60, max_seconds: 86400 };
+let FORM_STATE = {};
+let UNSAVED_CHANGES = false;
 
 const PULL_CYCLE_LABELS = {
     nws: 'NWS',
@@ -53,60 +55,10 @@ function clampCycle(seconds) {
     return Math.min(max, Math.max(min, Math.round(raw)));
 }
 
-function renderProviderPullCycles(values = {}) {
-    const host = document.getElementById('provider-pullcycle-list');
-    if (!host) return;
-
-    const ids = Object.keys(PULL_CYCLE_LABELS);
-    host.innerHTML = ids.map((providerId) => {
-        const label = PULL_CYCLE_LABELS[providerId] || providerId;
-        const defaultVal = Number(PROVIDER_TTL_DEFAULTS?.[providerId] || 300);
-        const value = clampCycle(values?.[providerId] ?? defaultVal);
-        const timeStr = formatSecondsAsTime(value);
-        return `
-            <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 8px;">${label}</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center;">
-                    <div>
-                        <span class="setup-lbl">Pull Cycle (seconds)</span>
-                        <input
-                            id="pullcycle-${providerId}"
-                            class="setup-input"
-                            type="number"
-                            min="${Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60)}"
-                            max="${Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400)}"
-                            value="${value}"
-                            data-provider-id="${providerId}"
-                            placeholder="seconds"
-                            style="width: 100%;"
-                        >
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <span id="pullcycle-time-${providerId}" class="pws-meta" style="font-weight: 600;">every ${timeStr}</span>
-                        <span id="pullcycle-meta-${providerId}" class="pws-meta">~${estimateCallsPerHour(value)}/h • ~${estimateCallsPerDay(value)}/d</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    host.querySelectorAll('input[data-provider-id]').forEach((input) => {
-        const updateMeta = () => {
-            const pid = input.getAttribute('data-provider-id');
-            if (!pid) return;
-            const value = clampCycle(input.value);
-            input.value = String(value);
-            const timeEl = document.getElementById(`pullcycle-time-${pid}`);
-            const meta = document.getElementById(`pullcycle-meta-${pid}`);
-            if (timeEl) {
-                timeEl.textContent = `every ${formatSecondsAsTime(value)}`;
-            }
-            if (meta) {
-                meta.textContent = `~${estimateCallsPerHour(value)}/h • ~${estimateCallsPerDay(value)}/d`;
-            }
-        };
-        input.addEventListener('change', updateMeta);
-        input.addEventListener('input', updateMeta);
+function setupPullCycleListeners() {
+    document.querySelectorAll('input[data-provider-id]').forEach((input) => {
+        input.addEventListener('change', markUnsaved);
+        input.addEventListener('input', markUnsaved);
     });
 }
 
@@ -243,6 +195,12 @@ function fillSettings(settings) {
         if (enabledEl) enabledEl.checked = !!settings?.providers?.[pid]?.enabled;
         const keyEl = document.getElementById(`setup-provider-${pid}-key`);
         if (keyEl) keyEl.value = '';
+        const cycleEl = document.getElementById(`pullcycle-${pid}`);
+        if (cycleEl) {
+            const defaultVal = Number(PROVIDER_TTL_DEFAULTS?.[pid] || (pid === 'noaa_tides' ? 1800 : pid === 'aviationweather' ? 600 : 300));
+            const value = clampCycle(settings?.cache?.provider_ttl_seconds?.[pid] ?? defaultVal);
+            cycleEl.value = String(value);
+        }
     });
 
     document.getElementById('setup-auth-enabled').checked = !!settings?.auth?.enabled;
@@ -254,8 +212,7 @@ function fillSettings(settings) {
 
     PROVIDER_TTL_DEFAULTS = settings?.cache?.provider_ttl_defaults || PROVIDER_TTL_DEFAULTS;
     PROVIDER_TTL_BOUNDS = settings?.cache?.provider_ttl_bounds || PROVIDER_TTL_BOUNDS;
-    renderProviderPullCycles(settings?.cache?.provider_ttl_seconds || {});
-    setStatus('provider-pullcycle-status', 'Provider pull cycles loaded.', 'ok');
+    saveFormState();
 }
 
 async function loadSettings() {
@@ -352,11 +309,10 @@ async function saveSettings() {
     try {
         await api('/settings', 'POST', payload);
         setStatus('setup-status', '✓ Settings saved successfully!', 'ok');
-        setStatus('provider-pullcycle-status', '✓ Pull cycles saved!', 'ok');
         await loadSettings();
+        clearUnsaved();
     } catch (err) {
         setStatus('setup-status', `Save failed: ${err.message}`, 'warn');
-        setStatus('provider-pullcycle-status', `Save failed: ${err.message}`, 'warn');
     }
 }
 
@@ -431,12 +387,14 @@ function renderTokenList(items) {
         btn.addEventListener('click', async () => {
             const tokenId = btn.getAttribute('data-token-id');
             if (!tokenId) return;
+            const tokenName = btn.parentElement?.querySelector('[style*="color: #7dd3fc"]')?.textContent || 'token';
+            if (!confirm(`Delete token "${tokenName}"? This cannot be undone.`)) return;
             try {
                 await api(`/agent-tokens/${encodeURIComponent(tokenId)}`, 'DELETE');
-                setStatus('agent-token-status', `Revoked token ${tokenId}.`, 'ok');
+                setStatus('agent-token-status', `✓ Token deleted.`, 'ok');
                 await loadAgentTokens();
             } catch (err) {
-                setStatus('agent-token-status', `Revoke failed: ${err.message}`, 'warn');
+                setStatus('agent-token-status', `Delete failed: ${err.message}`, 'warn');
             }
         });
     });
@@ -483,7 +441,24 @@ async function createAgentToken() {
         });
         const tokenEl = document.getElementById('agent-token-value');
         tokenEl.style.display = 'block';
+        tokenEl.innerHTML = '';
         tokenEl.textContent = `⚠️ COPY NOW - Token shown ONLY once and never again:\n\n${data.token}`;
+        
+        // Add copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'map-btn';
+        copyBtn.type = 'button';
+        copyBtn.style.marginTop = '8px';
+        copyBtn.style.display = 'block';
+        copyBtn.textContent = '📋 Copy Token';
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(data.token).then(() => {
+                copyBtn.textContent = '✓ Copied!';
+                setTimeout(() => { copyBtn.textContent = '📋 Copy Token'; }, 2000);
+            });
+        };
+        tokenEl.appendChild(copyBtn);
+        
         setStatus('agent-token-status', `✓ Created token "${name}". Copy the token above before leaving this page!`, 'ok');
         await loadAgentTokens();
     } catch (err) {
@@ -536,11 +511,133 @@ async function testProvider(providerId) {
     }
 }
 
+function saveFormState() {
+    FORM_STATE = {
+        home_label: document.getElementById('setup-home-label').value,
+        home_lat: document.getElementById('setup-home-lat').value,
+        home_lon: document.getElementById('setup-home-lon').value,
+        work_label: document.getElementById('setup-work-label').value,
+        work_lat: document.getElementById('setup-work-lat').value,
+        work_lon: document.getElementById('setup-work-lon').value,
+        timezone: document.getElementById('setup-timezone').value,
+        user_agent: document.getElementById('setup-user-agent').value,
+        map_provider: document.getElementById('setup-map-provider').value,
+        pws_provider: document.getElementById('setup-pws-provider').value,
+        pws_stations: document.getElementById('setup-pws-stations').value,
+        auth_enabled: document.getElementById('setup-auth-enabled').checked,
+        auth_viewer_required: document.getElementById('setup-auth-viewer-required').checked,
+        auth_admin_user: document.getElementById('setup-auth-admin-user').value,
+        auth_viewer_user: document.getElementById('setup-auth-viewer-user').value,
+    };
+    PROVIDER_IDS.forEach((pid) => {
+        FORM_STATE[`provider_${pid}_enabled`] = document.getElementById(`setup-provider-${pid}-enabled`).checked;
+        const cycleEl = document.getElementById(`pullcycle-${pid}`);
+        if (cycleEl) FORM_STATE[`pullcycle_${pid}`] = cycleEl.value;
+    });
+}
+
+function markUnsaved() {
+    if (!UNSAVED_CHANGES) {
+        UNSAVED_CHANGES = true;
+        const indicator = document.getElementById('unsaved-indicator');
+        if (indicator) indicator.style.display = 'inline';
+    }
+}
+
+function clearUnsaved() {
+    UNSAVED_CHANGES = false;
+    const indicator = document.getElementById('unsaved-indicator');
+    if (indicator) indicator.style.display = 'none';
+}
+
+function hasFormChanged() {
+    const home_label = document.getElementById('setup-home-label').value;
+    const home_lat = document.getElementById('setup-home-lat').value;
+    const home_lon = document.getElementById('setup-home-lon').value;
+    const work_label = document.getElementById('setup-work-label').value;
+    const work_lat = document.getElementById('setup-work-lat').value;
+    const work_lon = document.getElementById('setup-work-lon').value;
+    const timezone = document.getElementById('setup-timezone').value;
+    const user_agent = document.getElementById('setup-user-agent').value;
+    const map_provider = document.getElementById('setup-map-provider').value;
+    const pws_provider = document.getElementById('setup-pws-provider').value;
+    const pws_stations = document.getElementById('setup-pws-stations').value;
+    const auth_enabled = document.getElementById('setup-auth-enabled').checked;
+    const auth_viewer_required = document.getElementById('setup-auth-viewer-required').checked;
+    const auth_admin_user = document.getElementById('setup-auth-admin-user').value;
+    const auth_viewer_user = document.getElementById('setup-auth-viewer-user').value;
+    
+    let changed = home_label !== FORM_STATE.home_label || home_lat !== FORM_STATE.home_lat || home_lon !== FORM_STATE.home_lon ||
+                  work_label !== FORM_STATE.work_label || work_lat !== FORM_STATE.work_lat || work_lon !== FORM_STATE.work_lon ||
+                  timezone !== FORM_STATE.timezone || user_agent !== FORM_STATE.user_agent ||
+                  map_provider !== FORM_STATE.map_provider || pws_provider !== FORM_STATE.pws_provider ||
+                  pws_stations !== FORM_STATE.pws_stations || auth_enabled !== FORM_STATE.auth_enabled ||
+                  auth_viewer_required !== FORM_STATE.auth_viewer_required || auth_admin_user !== FORM_STATE.auth_admin_user ||
+                  auth_viewer_user !== FORM_STATE.auth_viewer_user;
+    
+    if (!changed) {
+        PROVIDER_IDS.forEach((pid) => {
+            if (document.getElementById(`setup-provider-${pid}-enabled`).checked !== FORM_STATE[`provider_${pid}_enabled`]) changed = true;
+            const cycleEl = document.getElementById(`pullcycle-${pid}`);
+            if (cycleEl && cycleEl.value !== FORM_STATE[`pullcycle_${pid}`]) changed = true;
+        });
+    }
+    return changed;
+}
+
+async function testAllProviders() {
+    const testBtn = document.getElementById('test-all-providers');
+    const testStatus = document.getElementById('test-all-status');
+    testBtn.disabled = true;
+    testStatus.textContent = 'Testing all providers...';
+    
+    let passed = 0, failed = 0;
+    for (const pid of PROVIDER_IDS) {
+        try {
+            await testProvider(pid);
+            passed++;
+        } catch (e) {
+            failed++;
+        }
+    }
+    
+    testStatus.textContent = `✓ ${passed} passed${failed > 0 ? `, ✗ ${failed} failed` : ''}`;
+    testBtn.disabled = false;
+}
+
 async function init() {
     document.getElementById('admin-login-btn').addEventListener('click', login);
     document.getElementById('admin-logout-btn').addEventListener('click', logout);
     document.getElementById('setup-save-btn').addEventListener('click', saveSettings);
+    document.getElementById('setup-discard-btn').addEventListener('click', () => {
+        if (hasFormChanged() && !confirm('Discard unsaved changes?')) return;
+        loadSettings();
+        clearUnsaved();
+    });
     document.getElementById('agent-token-create-btn').addEventListener('click', createAgentToken);
+    document.getElementById('test-all-providers').addEventListener('click', testAllProviders);
+    
+    // Keyboard shortcut: Ctrl+S to save
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            saveSettings();
+        }
+    });
+    
+    // Setup unsaved changes detection on all form inputs
+    document.querySelectorAll('.setup-input, .ctrl-lbl input').forEach((el) => {
+        el.addEventListener('change', markUnsaved);
+        el.addEventListener('input', markUnsaved);
+    });
+    
+    // Warn before leaving if unsaved
+    window.addEventListener('beforeunload', (e) => {
+        if (hasFormChanged()) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
 
     // Attach test provider handlers
     PROVIDER_IDS.forEach((providerId) => {
@@ -549,6 +646,9 @@ async function init() {
             btn.addEventListener('click', () => testProvider(providerId));
         }
     });
+    
+    // Setup pull cycle listeners for unsaved changes
+    setupPullCycleListeners();
 
     await loadAuthConfig();
     await loadAuthMe();
