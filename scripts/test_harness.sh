@@ -28,10 +28,11 @@ echo "[harness] compile checks"
   app/secure_settings.py \
   scripts/security_check.py \
   tests/test_provider_fallback.py \
+  tests/test_setup_auth_integration.py \
   tests/integration_smoke.py
 
 echo "[harness] unit tests"
-"${PY_BIN}" -m unittest -v tests/test_provider_fallback.py
+"${PY_BIN}" -m unittest -v tests/test_provider_fallback.py tests/test_setup_auth_integration.py
 
 if [[ "${SKIP_DOCKER}" != "1" ]]; then
   echo "[harness] docker build/start"

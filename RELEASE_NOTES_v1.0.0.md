@@ -40,7 +40,7 @@ Release date: 2026-04-04
 
 ### Testing and CI
 
-- Unit tests expanded to 12 focused tests:
+- Unit tests expanded to 16 focused tests:
   - provider fallback metadata behavior
   - auth/settings write-guard behavior
 - Added CI workflow: compile checks, pytest, Bandit, Docker build, health check, integration smoke.
@@ -61,7 +61,7 @@ Release date: 2026-04-04
 ## Validation Summary
 
 - Full harness status: PASS
-- Unit tests: PASS (12/12)
+- Unit tests: PASS (16/16)
 - Docker build/start: PASS
 - Health check: PASS
 - Integration smoke: PASS

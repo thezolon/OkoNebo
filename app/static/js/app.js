@@ -2270,13 +2270,6 @@ function setupStatus(message, tone = 'warn') {
     el.className = `setup-status ${tone}`;
 }
 
-function setupStatus(message, tone = 'warn') {
-    const el = document.getElementById('setup-status');
-    if (!el) return;
-    el.textContent = message;
-    el.className = `setup-status ${tone}`;
-}
-
 // ---------------------------------------------------------------------------
 // First-run blocking overlay
 // ---------------------------------------------------------------------------

@@ -17,12 +17,15 @@
 - Completed: provider capability metadata exposed via `/api/bootstrap` and `/api/settings`
 - Completed: initial fallback test file `tests/test_provider_fallback.py`
 - Completed: reliable local test harness (`scripts/test_harness.sh`) to remove host environment drift
+- Completed: setup/auth integration test suite `tests/test_setup_auth_integration.py` covering first-run bootstrap transition and auth login/logout paths
+- Completed: harness unit test stage expanded to run 16 tests across fallback + setup/auth integration
+- Completed: duplicate frontend `setupStatus()` declaration removed in `app/static/js/app.js`
 
 ## Current Risks
 - Host Python dependency drift can break local test execution even when container runtime is healthy.
 - Fallback chain complexity grows with each provider and needs automated coverage.
 
 ## Next Actions
-1. Expand fallback tests to cover forecast/hourly failure details and attempted-provider metadata.
-2. Add CI workflow to run `scripts/test_harness.sh` on pull requests.
-3. Add adapter-specific contract tests for each keyed provider.
+1. Add frontend smoke tests for setup/map-provider selection (T7.3).
+2. Final docs pass for setup/auth/providers/security with fresh-install walkthrough validation (T8.4).
+3. Start release engineering cut tasks (T9.1-T9.3): freeze policy, tag flow, checksums script.

@@ -15,7 +15,7 @@ Self-hosted weather dashboard and local API for your configured monitoring locat
 - **Offline-aware UI** - persistent browser cache, last-known-good state, visible diagnostics
 - **Radar** - RainViewer with OWM overlay option; Esri/OSM/CARTO base layers
 - **PWS** - personal weather station comparison and trend chart
-- **CI pipeline** - compile checks, unit tests (12), Bandit security scan, Docker build + health + smoke on every push
+- **CI pipeline** - compile checks, unit tests (16), Bandit security scan, Docker build + health + smoke on every push
 
 ## Quick Start
 
@@ -125,7 +125,7 @@ Keyless providers are enabled by default. Keyed providers activate automatically
 bash scripts/test_harness.sh
 ```
 
-Runs: compile checks -> 12 unit tests -> Docker build -> health check -> integration smoke -> secret leak check.
+Runs: compile checks -> 16 unit tests -> Docker build -> health check -> integration smoke -> secret leak check.
 
 ```bash
 # Skip Docker (test against an already-running container):
@@ -139,7 +139,7 @@ WEATHERAPP_BASE_URL=http://myhost:8888 bash scripts/test_harness.sh
 
 The CI pipeline (`.github/workflows/ci.yml`) runs on every push and PR to `main` and `release/**`:
 
-- **test job**: compile checks, pytest (12 tests), Bandit security scan
+- **test job**: compile checks, pytest (16 tests), Bandit security scan
 - **docker job**: build image, health check, integration smoke
 
 ## Operations Notes

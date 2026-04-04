@@ -92,7 +92,7 @@ For fresh installs with unset location/provider keys, weather data endpoints may
 `scripts/test_harness.sh` runs:
 
 1. Python compile checks
-2. Unit tests (`tests/test_provider_fallback.py`, 12 tests)
+2. Unit tests (`tests/test_provider_fallback.py` + `tests/test_setup_auth_integration.py`, 16 tests)
 3. Docker build/start
 4. Health check
 5. Integration smoke
