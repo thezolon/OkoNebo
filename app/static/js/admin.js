@@ -64,21 +64,27 @@ function renderProviderPullCycles(values = {}) {
         const value = clampCycle(values?.[providerId] ?? defaultVal);
         const timeStr = formatSecondsAsTime(value);
         return `
-            <div class="setup-row"><span class="setup-lbl">${label}</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input
-                        id="pullcycle-${providerId}"
-                        class="setup-input"
-                        type="number"
-                        min="${Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60)}"
-                        max="${Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400)}"
-                        value="${value}"
-                        data-provider-id="${providerId}"
-                        placeholder="seconds"
-                        style="max-width:100px;"
-                    >
-                    <span id="pullcycle-time-${providerId}" class="pws-meta" style="min-width: 50px;">every ${timeStr}</span>
-                    <span id="pullcycle-meta-${providerId}" class="pws-meta">~${estimateCallsPerHour(value)}/h • ~${estimateCallsPerDay(value)}/d</span>
+            <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 8px;">${label}</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center;">
+                    <div>
+                        <span class="setup-lbl">Pull Cycle (seconds)</span>
+                        <input
+                            id="pullcycle-${providerId}"
+                            class="setup-input"
+                            type="number"
+                            min="${Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60)}"
+                            max="${Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400)}"
+                            value="${value}"
+                            data-provider-id="${providerId}"
+                            placeholder="seconds"
+                            style="width: 100%;"
+                        >
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span id="pullcycle-time-${providerId}" class="pws-meta" style="font-weight: 600;">every ${timeStr}</span>
+                        <span id="pullcycle-meta-${providerId}" class="pws-meta">~${estimateCallsPerHour(value)}/h • ~${estimateCallsPerDay(value)}/d</span>
+                    </div>
                 </div>
             </div>
         `;
