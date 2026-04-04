@@ -54,6 +54,7 @@ def main() -> int:
     # Dashboard should link to admin page.
     ensure(has_id(html, "admin-section"), "Missing admin section on dashboard")
     ensure(has_id(html, "viewer-help-section"), "Missing viewer help section on dashboard")
+    ensure(has_id(html, "viewer-help-toolbar-btn"), "Missing toolbar help button on dashboard")
 
     forecast_pos = html.find('id="forecast-section"')
     debug_pos = html.find('id="debug-section"')
