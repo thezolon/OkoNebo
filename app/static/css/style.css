@@ -69,6 +69,18 @@ body.admin-page .app-shell {
     overflow: visible;
 }
 
+html.admin-page {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+html.admin-page body.admin-page {
+    height: auto;
+    min-height: 100%;
+}
+
 /* ── Alert Ticker ────────────────────────────────────────────────────────── */
 .alert-ticker {
     position: fixed;
