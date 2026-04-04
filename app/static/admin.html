@@ -249,21 +249,37 @@
                 <div class="panel-sec-hdr">
                     <h3>AI Agent Tokens</h3>
                 </div>
-                <div class="setup-grid">
-                    <div class="setup-row"><span class="setup-lbl">Token Name</span><input id="agent-token-name" class="setup-input" type="text" placeholder="OpenClaw Agent"></div>
-                    <div class="setup-row"><span class="setup-lbl">TTL Hours</span><input id="agent-token-ttl" class="setup-input" type="number" min="1" max="2160" value="168"></div>
-                    <div class="setup-row"><span class="setup-lbl">weather.read</span><label class="ctrl-lbl"><input id="scope-weather-read" type="checkbox" checked> Grant</label></div>
-                    <div class="setup-row"><span class="setup-lbl">config.read</span><label class="ctrl-lbl"><input id="scope-config-read" type="checkbox" checked> Grant</label></div>
-                    <div class="setup-row"><span class="setup-lbl">stats.read</span><label class="ctrl-lbl"><input id="scope-stats-read" type="checkbox" checked> Grant</label></div>
-                    <div class="setup-row"><span class="setup-lbl">debug.read</span><label class="ctrl-lbl"><input id="scope-debug-read" type="checkbox"> Grant</label></div>
+                <div style="display: grid; gap: 12px;">
+                    <!-- Token Creation Form -->
+                    <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Create New Token</div>
+                        <div style="display: grid; gap: 12px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div><span class="setup-lbl">Token Name</span><input id="agent-token-name" class="setup-input" type="text" placeholder="OpenClaw Agent" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">TTL Hours</span><input id="agent-token-ttl" class="setup-input" type="number" min="1" max="2160" value="168" style="width: 100%;"></div>
+                            </div>
+                            <div style="display: grid; gap: 8px;">
+                                <div style="font-size: 0.9em; color: #aaa;">Scopes (select which permissions to grant)</div>
+                                <label class="ctrl-lbl"><input id="scope-weather-read" type="checkbox" checked> weather.read — Read current, forecast, alerts</label>
+                                <label class="ctrl-lbl"><input id="scope-config-read" type="checkbox" checked> config.read — Read location & bootstrap info</label>
+                                <label class="ctrl-lbl"><input id="scope-stats-read" type="checkbox" checked> stats.read — Read provider call counters</label>
+                                <label class="ctrl-lbl"><input id="scope-debug-read" type="checkbox"> debug.read — Read debug telemetry</label>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button id="agent-token-create-btn" class="btn-refresh" type="button" style="flex: 1;">Create Token</button>
+                                <a href="/agent-integrations.html" class="map-btn" style="text-decoration:none; padding: 8px 12px; text-align: center;">View Integration Guide</a>
+                            </div>
+                            <div id="agent-token-status" class="setup-status">Ready to create tokens.</div>
+                            <pre id="agent-token-value" class="setup-status" style="white-space: pre-wrap; display:none; background: rgba(100,200,100,0.1); border-left: 3px solid #4ade80; padding: 8px;"></pre>
+                        </div>
+                    </div>
+
+                    <!-- Token List -->
+                    <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Managed Tokens</div>
+                        <div id="agent-token-list" style="display: grid; gap: 8px;"></div>
+                    </div>
                 </div>
-                <div class="setup-actions">
-                    <button id="agent-token-create-btn" class="btn-refresh" type="button">Create Token</button>
-                    <a href="/agent-integrations.html" class="map-btn" style="text-decoration:none;">View Integration Methods</a>
-                </div>
-                <div id="agent-token-status" class="setup-status">No token created yet.</div>
-                <pre id="agent-token-value" class="setup-status" style="white-space: pre-wrap; display:none;"></pre>
-                <div id="agent-token-list" class="forecast-list" style="margin-top: 12px;"></div>
             </section>
         </main>
     </div>

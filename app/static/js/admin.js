@@ -358,29 +358,65 @@ function renderTokenList(items) {
     const host = document.getElementById('agent-token-list');
     if (!host) return;
     if (!items || items.length === 0) {
-        host.innerHTML = '<div class="timeline-empty">No agent tokens yet.</div>';
+        host.innerHTML = '<div style="color: #999; font-style: italic;">No agent tokens yet.</div>';
         return;
     }
     const rows = items
         .slice()
         .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
-        .map((item) => {
+        .map((item, idx) => {
             const scopes = (item.scopes || []).join(', ') || '--';
             const exp = item.expires_at ? new Date(item.expires_at * 1000).toLocaleString() : '--';
+            const created = item.created_at ? new Date(item.created_at * 1000).toLocaleString() : '--';
             const revoked = item.revoked ? 'revoked' : 'active';
+            const expandId = `token-expand-${idx}`;
+            const detailsId = `token-details-${idx}`;
             return `
-                <div class="timeline-item system">
-                    <div><strong>${item.name || 'Agent Token'}</strong> <span class="badge">${revoked}</span></div>
-                    <div>ID: ${item.id}</div>
-                    <div>Scopes: ${scopes}</div>
-                    <div>Expires: ${exp}</div>
-                    <div class="setup-actions" style="margin-top:6px;">
-                        <button class="map-btn" data-token-id="${item.id}" ${item.revoked ? 'disabled' : ''}>Revoke</button>
+                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                    <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;">
+                        <div>
+                            <div style="font-weight: bold; color: #7dd3fc;">
+                                ${item.name || 'Agent Token'}
+                                <span style="font-size: 0.85em; margin-left: 8px; padding: 2px 6px; background: ${revoked === 'revoked' ? 'rgba(200,100,100,0.3)' : 'rgba(100,200,100,0.3)'}; border-radius: 3px;">${revoked.toUpperCase()}</span>
+                            </div>
+                            <div style="font-size: 0.85em; color: #888; margin-top: 4px; font-family: monospace;">ID: ${item.id}</div>
+                        </div>
+                        <button id="${expandId}" class="map-btn" type="button" style="min-width: 80px;">Expand</button>
+                        <button class="map-btn" data-token-id="${item.id}" type="button" ${item.revoked ? 'disabled' : ''}>Revoke</button>
+                    </div>
+                    <div id="${detailsId}" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.9em;">
+                            <div>
+                                <div style="color: #888; margin-bottom: 4px;">Scopes</div>
+                                <div>${scopes}</div>
+                            </div>
+                            <div>
+                                <div style="color: #888; margin-bottom: 4px;">Created</div>
+                                <div>${created}</div>
+                            </div>
+                            <div>
+                                <div style="color: #888; margin-bottom: 4px;">Expires</div>
+                                <div>${exp}</div>
+                            </div>
+                        </div>
                     </div>
                 </div>`;
         })
         .join('');
     host.innerHTML = rows;
+
+    // Attach expand/collapse listeners
+    items.forEach((item, idx) => {
+        const expandBtn = document.getElementById(`token-expand-${idx}`);
+        const detailsDiv = document.getElementById(`token-details-${idx}`);
+        if (expandBtn && detailsDiv) {
+            expandBtn.addEventListener('click', () => {
+                const isShowing = detailsDiv.style.display !== 'none';
+                detailsDiv.style.display = isShowing ? 'none' : 'block';
+                expandBtn.textContent = isShowing ? 'Expand' : 'Collapse';
+            });
+        }
+    });
 
     host.querySelectorAll('button[data-token-id]').forEach((btn) => {
         btn.addEventListener('click', async () => {
