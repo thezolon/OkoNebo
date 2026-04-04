@@ -50,39 +50,125 @@
                         <div class="setup-row"><span class="setup-lbl">PWS Provider</span><input id="setup-pws-provider" class="setup-input" type="text" placeholder="weather.com"></div>
                         <div class="setup-row"><span class="setup-lbl">PWS Station IDs</span><input id="setup-pws-stations" class="setup-input" type="text" placeholder="ID1,ID2"></div>
 
-                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; margin-top: 12px;">
-                            <div class="setup-row"><span class="setup-lbl"><strong>NWS</strong></span><label class="ctrl-lbl"><input id="setup-provider-nws-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-nws" class="map-btn" type="button">Test</button><span id="test-result-nws" class="pws-meta" style="margin-left:8px;"></span></div>
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; margin-top: 16px;">
+                            <div style="display: grid; gap: 16px;">
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">NWS</span>
+                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                            <label class="ctrl-lbl"><input id="setup-provider-nws-enabled" type="checkbox"> Enable</label>
+                                            <button id="test-provider-nws" class="map-btn" type="button">Test</button>
+                                            <span id="test-result-nws" class="pws-meta"></span>
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>OpenWeather</strong></span><label class="ctrl-lbl"><input id="setup-provider-openweather-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-openweather" class="map-btn" type="button">Test</button><span id="test-result-openweather" class="pws-meta" style="margin-left:8px;"></span></div>
-                            <div class="setup-row"><span class="setup-lbl">OWM API Key</span><input id="setup-provider-openweather-key" class="setup-input" type="password" placeholder="optional"></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">OpenWeather</span>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <label class="ctrl-lbl"><input id="setup-provider-openweather-enabled" type="checkbox"> Enable</label>
+                                                <button id="test-provider-openweather" class="map-btn" type="button">Test</button>
+                                                <span id="test-result-openweather" class="pws-meta"></span>
+                                            </div>
+                                            <input id="setup-provider-openweather-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>PWS</strong></span><label class="ctrl-lbl"><input id="setup-provider-pws-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-pws" class="map-btn" type="button">Test</button><span id="test-result-pws" class="pws-meta" style="margin-left:8px;"></span></div>
-                            <div class="setup-row"><span class="setup-lbl">PWS API Key</span><input id="setup-provider-pws-key" class="setup-input" type="password" placeholder="optional"></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">PWS</span>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <label class="ctrl-lbl"><input id="setup-provider-pws-enabled" type="checkbox"> Enable</label>
+                                                <button id="test-provider-pws" class="map-btn" type="button">Test</button>
+                                                <span id="test-result-pws" class="pws-meta"></span>
+                                            </div>
+                                            <input id="setup-provider-pws-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>Tomorrow.io</strong></span><label class="ctrl-lbl"><input id="setup-provider-tomorrow-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-tomorrow" class="map-btn" type="button">Test</button><span id="test-result-tomorrow" class="pws-meta" style="margin-left:8px;"></span></div>
-                            <div class="setup-row"><span class="setup-lbl">Tomorrow Key</span><input id="setup-provider-tomorrow-key" class="setup-input" type="password" placeholder="optional"></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">Tomorrow.io</span>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <label class="ctrl-lbl"><input id="setup-provider-tomorrow-enabled" type="checkbox"> Enable</label>
+                                                <button id="test-provider-tomorrow" class="map-btn" type="button">Test</button>
+                                                <span id="test-result-tomorrow" class="pws-meta"></span>
+                                            </div>
+                                            <input id="setup-provider-tomorrow-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>Meteomatics</strong></span><label class="ctrl-lbl"><input id="setup-provider-meteomatics-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-meteomatics" class="map-btn" type="button">Test</button><span id="test-result-meteomatics" class="pws-meta" style="margin-left:8px;"></span></div>
-                            <div class="setup-row"><span class="setup-lbl">Meteomatics Key</span><input id="setup-provider-meteomatics-key" class="setup-input" type="password" placeholder="optional"></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">Meteomatics</span>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <label class="ctrl-lbl"><input id="setup-provider-meteomatics-enabled" type="checkbox"> Enable</label>
+                                                <button id="test-provider-meteomatics" class="map-btn" type="button">Test</button>
+                                                <span id="test-result-meteomatics" class="pws-meta"></span>
+                                            </div>
+                                            <input id="setup-provider-meteomatics-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>WeatherAPI</strong></span><label class="ctrl-lbl"><input id="setup-provider-weatherapi-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-weatherapi" class="map-btn" type="button">Test</button><span id="test-result-weatherapi" class="pws-meta" style="margin-left:8px;"></span></div>
-                            <div class="setup-row"><span class="setup-lbl">WeatherAPI Key</span><input id="setup-provider-weatherapi-key" class="setup-input" type="password" placeholder="optional"></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">WeatherAPI</span>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <label class="ctrl-lbl"><input id="setup-provider-weatherapi-enabled" type="checkbox"> Enable</label>
+                                                <button id="test-provider-weatherapi" class="map-btn" type="button">Test</button>
+                                                <span id="test-result-weatherapi" class="pws-meta"></span>
+                                            </div>
+                                            <input id="setup-provider-weatherapi-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>Visual Crossing</strong></span><label class="ctrl-lbl"><input id="setup-provider-visualcrossing-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-visualcrossing" class="map-btn" type="button">Test</button><span id="test-result-visualcrossing" class="pws-meta" style="margin-left:8px;"></span></div>
-                            <div class="setup-row"><span class="setup-lbl">Visual Crossing Key</span><input id="setup-provider-visualcrossing-key" class="setup-input" type="password" placeholder="optional"></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: start;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">Visual Crossing</span>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <label class="ctrl-lbl"><input id="setup-provider-visualcrossing-enabled" type="checkbox"> Enable</label>
+                                                <button id="test-provider-visualcrossing" class="map-btn" type="button">Test</button>
+                                                <span id="test-result-visualcrossing" class="pws-meta"></span>
+                                            </div>
+                                            <input id="setup-provider-visualcrossing-key" class="setup-input" type="password" placeholder="API Key (optional)" style="width: 100%; max-width: none;">
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>AviationWeather</strong></span><label class="ctrl-lbl"><input id="setup-provider-aviationweather-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-aviationweather" class="map-btn" type="button">Test</button><span id="test-result-aviationweather" class="pws-meta" style="margin-left:8px;"></span></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">AviationWeather</span>
+                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                            <label class="ctrl-lbl"><input id="setup-provider-aviationweather-enabled" type="checkbox"> Enable</label>
+                                            <button id="test-provider-aviationweather" class="map-btn" type="button">Test</button>
+                                            <span id="test-result-aviationweather" class="pws-meta"></span>
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div class="setup-row"><span class="setup-lbl"><strong>NOAA Tides</strong></span><label class="ctrl-lbl"><input id="setup-provider-noaa_tides-enabled" type="checkbox"> Enable</label></div>
-                            <div class="setup-row" style="margin-left: 160px; margin-top: -8px;"><button id="test-provider-noaa_tides" class="map-btn" type="button">Test</button><span id="test-result-noaa_tides" class="pws-meta" style="margin-left:8px;"></span></div>
+                                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                    <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center;">
+                                        <span style="font-weight: bold; color: #7dd3fc;">NOAA Tides</span>
+                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                            <label class="ctrl-lbl"><input id="setup-provider-noaa_tides-enabled" type="checkbox"> Enable</label>
+                                            <button id="test-provider-noaa_tides" class="map-btn" type="button">Test</button>
+                                            <span id="test-result-noaa_tides" class="pws-meta"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="setup-row"><span class="setup-lbl">Enable Auth</span><label class="ctrl-lbl"><input id="setup-auth-enabled" type="checkbox"> Auth system enabled</label></div>
