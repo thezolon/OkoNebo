@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" class="admin-page">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OkoNebo Viewer Help</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="admin-page">
+    <div class="app-shell" style="grid-template-columns: 1fr; max-width: 1100px; margin: 0 auto;">
+        <main class="main-col" style="padding: 16px;">
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h2>Viewer Help</h2>
+                    <div style="display:flex; gap:8px;">
+                        <a href="/" class="map-btn" style="text-decoration:none;">Back to Dashboard</a>
+                        <a href="/admin-help.html" class="map-btn" style="text-decoration:none;">Admin Help</a>
+                    </div>
+                </div>
+                <p class="pws-meta">This page explains what you are seeing on the main dashboard and how to read it quickly.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Left Panel: Current Conditions</h3></div>
+                <ul>
+                    <li>Location, current temperature, and condition icon reflect the latest active source.</li>
+                    <li>Humidity, wind, pressure, visibility, dewpoint, UV, sunrise, and sunset update with each refresh cycle.</li>
+                    <li>Source dots indicate feed health: green good, amber degraded, red failed, gray loading.</li>
+                    <li>Active Alerts shows currently relevant weather alerts for configured monitored locations.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Center Panel: Radar + Hourly</h3></div>
+                <ul>
+                    <li>Radar controls let you step, animate, pause, and jump to live frames.</li>
+                    <li>Choose radar provider and optional overlay (precipitation, wind, temp, pressure, clouds).</li>
+                    <li>48-Hour Forecast can be viewed as a chart or table for quick trend reading.</li>
+                    <li>Alert polygons can be toggled on/off for map clarity.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Right Panel: Planning + Diagnostics</h3></div>
+                <ul>
+                    <li>7-Day Forecast is pinned at the top for daily planning.</li>
+                    <li>System Status shows sync timing, request counts, cache state, and upstream status.</li>
+                    <li>Ops Timeline summarizes recent observations, alerts, and system events.</li>
+                    <li>PWS Pair appears when configured and compares station conditions/trends.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Controls You Can Use</h3></div>
+                <ul>
+                    <li>Units: switch between F/mph and C/km/h.</li>
+                    <li>Full auto-refresh: keep data updating continuously.</li>
+                    <li>Storm mode: higher refresh cadence during active weather windows.</li>
+                    <li>Refresh Now: immediate pull of current feeds.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec">
+                <div class="panel-sec-hdr"><h3>What To Do If Data Looks Stale</h3></div>
+                <ul>
+                    <li>Check source dots and System Status to confirm upstream availability.</li>
+                    <li>Use Refresh Now once to force a new fetch cycle.</li>
+                    <li>If all providers are down, weather endpoints may return temporary 502 until fallback succeeds.</li>
+                </ul>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

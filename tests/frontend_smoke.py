@@ -46,11 +46,20 @@ def main() -> int:
     admin_html = fetch_html("/admin.html")
     integrations_html = fetch_html("/agent-integrations.html")
     manual_html = fetch_html("/agent-manual.html")
+    viewer_help_html = fetch_html("/viewer-help.html")
+    admin_help_html = fetch_html("/admin-help.html")
     profile_json = fetch_html("/.well-known/okonebo-agent.json")
     instructions_txt = fetch_html("/.well-known/okonebo-agent-instructions.txt")
 
     # Dashboard should link to admin page.
     ensure(has_id(html, "admin-section"), "Missing admin section on dashboard")
+    ensure(has_id(html, "viewer-help-section"), "Missing viewer help section on dashboard")
+
+    forecast_pos = html.find('id="forecast-section"')
+    debug_pos = html.find('id="debug-section"')
+    ensure(forecast_pos != -1, "Missing 7-day forecast section")
+    ensure(debug_pos != -1, "Missing system status section")
+    ensure(forecast_pos < debug_pos, "7-day forecast section must appear before system status")
 
     # Setup/admin controls now live on /admin.html.
     for required_id in [
@@ -89,6 +98,8 @@ def main() -> int:
 
     ensure("Agent Manual Instructions" in manual_html, "Manual instruction page must be available")
     ensure("Copy/Paste Prompt Template" in manual_html, "Manual page should include prompt template section")
+    ensure("Viewer Help" in viewer_help_html, "Viewer help page must be available")
+    ensure("Admin Help" in admin_help_html, "Admin help page must be available")
 
     ensure('"service":"okonebo"' in profile_json.replace(" ", ""), "Auto-config profile must identify service")
     ensure('"tools"' in profile_json, "Auto-config profile must include tool definitions")
@@ -99,6 +110,8 @@ def main() -> int:
     print("frontend smoke: map provider options OK")
     print("frontend smoke: integration guide page OK")
     print("frontend smoke: auto/manual agent instruction pages OK")
+    print("frontend smoke: viewer/admin help pages OK")
+    print("frontend smoke: right-panel forecast ordering OK")
     print("frontend smoke: OK")
     return 0
 

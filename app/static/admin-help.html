@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" class="admin-page">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OkoNebo Admin Help</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="admin-page">
+    <div class="app-shell" style="grid-template-columns: 1fr; max-width: 1100px; margin: 0 auto;">
+        <main class="main-col" style="padding: 16px;">
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <h2>Admin Help</h2>
+                    <div style="display:flex; gap:8px;">
+                        <a href="/admin.html" class="map-btn" style="text-decoration:none;">Back to Admin</a>
+                        <a href="/viewer-help.html" class="map-btn" style="text-decoration:none;">Viewer Help</a>
+                    </div>
+                </div>
+                <p class="pws-meta">This page explains what administrators can configure and what each feature controls.</p>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Runtime Setup</h3></div>
+                <ul>
+                    <li>Home/work location controls the map center, monitored alert regions, and default forecast point.</li>
+                    <li>Timezone affects local display formatting in dashboard and timeline elements.</li>
+                    <li>User Agent is sent to upstream providers that require application identification.</li>
+                    <li>Map Provider selects the default base map style for the main dashboard.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Provider Controls</h3></div>
+                <ul>
+                    <li>Enable or disable each provider at runtime without rebuilding the app.</li>
+                    <li>API keys saved in setup are stored encrypted in secure settings storage.</li>
+                    <li>Keyless providers can remain enabled by default for baseline coverage.</li>
+                    <li>If one provider fails, weather routes fall back to others in configured order.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>Auth and Access</h3></div>
+                <ul>
+                    <li>Enable Auth to require user login for protected operations.</li>
+                    <li>Viewer Login requirement forces read-only users to authenticate for normal viewing.</li>
+                    <li>Admin user credentials control write operations such as settings and token management.</li>
+                    <li>In no-auth mode, local admin functions are intentionally open for single-user deployments.</li>
+                </ul>
+            </section>
+
+            <section class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr"><h3>AI Agent Tokens</h3></div>
+                <ul>
+                    <li>Create one token per agent system with least-privilege scopes.</li>
+                    <li>Token value is shown once on creation, then only metadata is retained in the UI.</li>
+                    <li>Revoke tokens immediately when services/users rotate or compromise is suspected.</li>
+                    <li>Use the integration guide for MCP/ACP/REST connection models.</li>
+                </ul>
+                <div class="setup-actions" style="margin-top:8px;">
+                    <a href="/agent-integrations.html" class="map-btn" style="text-decoration:none;">Open AI Integration Guide</a>
+                </div>
+            </section>
+
+            <section class="panel-sec">
+                <div class="panel-sec-hdr"><h3>Operational Tips</h3></div>
+                <ul>
+                    <li>Back up runtime databases before large config changes.</li>
+                    <li>After changing environment variables, rebuild/restart containers to apply them.</li>
+                    <li>Use System Status + Ops Timeline on the dashboard to validate behavior after changes.</li>
+                </ul>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

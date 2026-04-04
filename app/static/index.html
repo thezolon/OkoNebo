@@ -185,6 +185,18 @@
         </main>
 
         <aside class="right-panel">
+            <section class="panel-sec" id="forecast-section">
+                <div class="panel-sec-hdr">
+                    <h3>7-Day Forecast</h3>
+                    <select id="forecast-filter" class="ctrl-sel-sm">
+                        <option value="day">Days</option>
+                        <option value="all">All</option>
+                        <option value="night">Nights</option>
+                    </select>
+                </div>
+                <div id="forecast-list" class="forecast-list"></div>
+            </section>
+
             <section class="panel-sec" id="debug-section">
                 <div class="panel-sec-hdr">
                     <h3>System Status</h3>
@@ -208,6 +220,19 @@
                 <p class="pws-meta">Setup, auth, and AI agent tokens now live on a dedicated admin page.</p>
                 <div class="setup-actions">
                     <a href="/admin.html" class="btn-refresh" style="text-align:center; text-decoration:none;">Open Admin Page</a>
+                </div>
+                <div class="setup-actions" style="margin-top:8px;">
+                    <a href="/admin-help.html" class="map-btn" style="text-align:center; text-decoration:none;">Admin Help</a>
+                </div>
+            </section>
+
+            <section class="panel-sec" id="viewer-help-section">
+                <div class="panel-sec-hdr">
+                    <h3>Viewer Help</h3>
+                </div>
+                <p class="pws-meta">Need a quick tour of the dashboard? Open the in-app viewer guide.</p>
+                <div class="setup-actions">
+                    <a href="/viewer-help.html" class="map-btn" style="text-align:center; text-decoration:none;">Open Viewer Help</a>
                 </div>
             </section>
 
@@ -235,18 +260,6 @@
                 </div>
                 <div id="pws-cards" class="pws-cards"></div>
                 <div id="pws-delta" class="pws-delta"></div>
-            </section>
-
-            <section class="panel-sec">
-                <div class="panel-sec-hdr">
-                    <h3>7-Day Forecast</h3>
-                    <select id="forecast-filter" class="ctrl-sel-sm">
-                        <option value="day">Days</option>
-                        <option value="all">All</option>
-                        <option value="night">Nights</option>
-                    </select>
-                </div>
-                <div id="forecast-list" class="forecast-list"></div>
             </section>
 
             <section class="panel-sec" id="owm-daily-section" style="display:none">
