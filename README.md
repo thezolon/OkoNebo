@@ -38,6 +38,8 @@ bash health-check.sh
 Browse to **http://localhost:8888** - a first-run overlay will prompt for your location and any optional provider API keys.
 After saving, the dashboard loads and begins polling.
 
+For a complete step-by-step guide see [INSTALL.md](INSTALL.md).
+
 | URL | Purpose |
 |-----|---------|
 | http://localhost:8888 | Dashboard |

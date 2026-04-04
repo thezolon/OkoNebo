@@ -1,4 +1,4 @@
-# config.yaml - WeatherApp configuration
+# config.yaml - OkoNebo configuration
 #
 # Copy this file to config.yaml and fill in values for your location.
 # All runtime configuration (provider API keys, locations, preferences)
