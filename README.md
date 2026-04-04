@@ -19,6 +19,13 @@ OkoNebo is a self-hosted weather dashboard and local API for your location. It c
 
 ## Quick Start
 
+If your clone predates runtime DB bind mounts, run one clean restart once:
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
 ### 1. Copy the example config
 
 ```bash
@@ -204,6 +211,18 @@ Expected: `SECRET LEAK CHECK: OK`
 
 ```bash
 docker compose up -d --build
+```
+
+### Backup runtime state
+
+```bash
+bash scripts/backup.sh
+```
+
+Windows (PowerShell):
+
+```powershell
+.\backup.ps1
 ```
 
 ### Verify OpenWeather key is active

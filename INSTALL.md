@@ -49,6 +49,13 @@ All other fields are optional; API keys can be added later through the UI.
 
 ## Step 2 — Start the container
 
+If this clone is from before runtime DB bind mounts were added, do one clean restart once:
+
+```
+docker compose down
+docker compose up -d --build
+```
+
 **Linux / macOS:**
 ```bash
 bash start.sh
@@ -223,6 +230,22 @@ docker compose up -d --build
 `config.yaml`, `secure_settings.db`, and `cache.db` are mounted from the host and are never touched by a rebuild.
 
 Always read `RELEASE_NOTES_v*.md` for breaking changes before upgrading across major versions.
+
+---
+
+## Backups
+
+Before major upgrades, take a quick backup of runtime state:
+
+**Linux / macOS:**
+```bash
+bash scripts/backup.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+.\backup.ps1
+```
 
 ---
 

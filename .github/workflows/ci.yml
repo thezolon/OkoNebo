@@ -68,7 +68,7 @@ jobs:
           for f in scripts/*.py; do python -m py_compile "$f"; done
 
       - name: Unit tests
-        run: python -m pytest tests/test_provider_fallback.py -v --tb=short
+        run: python -m unittest -v tests/test_provider_fallback.py tests/test_setup_auth_integration.py
 
       - name: Secret leak scan
         run: python scripts/security_check.py
