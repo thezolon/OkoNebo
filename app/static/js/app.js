@@ -145,21 +145,48 @@ function formatAgeShort(value) {
     return `${Math.floor(ageHr / 24)}d old`;
 }
 
-function ageClass(value, freshMinutes = 10, warnMinutes = 25) {
+function ageClass(value, freshMinutes = 10, warnMinutes = 25, staleMinutes = null) {
     const ts = parseTimestamp(value);
     if (ts == null) return 'offline';
     const ageMin = Math.max(Date.now() - ts, 0) / 60000;
     if (ageMin <= freshMinutes) return 'fresh';
-    if (ageMin <= warnMinutes) return 'warn';
+    const warnCap = staleMinutes != null ? staleMinutes : warnMinutes;
+    if (ageMin <= warnCap) return 'warn';
     return 'stale';
 }
 
-function setAgeBadge(id, value, freshMinutes, warnMinutes) {
+function setAgeBadge(id, value, freshMinutes, warnMinutes, staleMinutes = null) {
     const el = document.getElementById(id);
     if (!el) return;
-    const cls = ageClass(value, freshMinutes, warnMinutes);
+    const cls = ageClass(value, freshMinutes, warnMinutes, staleMinutes);
     el.className = `source-age-val ${cls}`;
     el.textContent = formatAgeShort(value);
+}
+
+function getNwsObsHealth(timestamp) {
+    const ts = parseTimestamp(timestamp);
+    if (ts == null) {
+        return {
+            level: 'offline',
+            ageMin: null,
+            refreshMin: Math.max(1, Math.round(state.refreshIntervalMs / 60000)),
+            questionableAfterMin: 15,
+            severeAfterMin: 30,
+        };
+    }
+
+    const refreshMin = Math.max(1, Math.round(state.refreshIntervalMs / 60000));
+    const ageMin = Math.max((Date.now() - ts) / 60000, 0);
+    const questionableAfterMin = Math.min(15, refreshMin);
+    const severeAfterMin = Math.max(15, refreshMin * 2);
+
+    if (ageMin > severeAfterMin) {
+        return { level: 'stale', ageMin, refreshMin, questionableAfterMin, severeAfterMin };
+    }
+    if (ageMin > questionableAfterMin) {
+        return { level: 'questionable', ageMin, refreshMin, questionableAfterMin, severeAfterMin };
+    }
+    return { level: 'fresh', ageMin, refreshMin, questionableAfterMin, severeAfterMin };
 }
 
 function renderSourceAges() {
@@ -174,7 +201,10 @@ function renderSourceAges() {
         .filter((value) => value != null)
         .sort((a, b) => b - a)[0] || null;
 
-    setAgeBadge('nws-age', nwsTs, 10, 20);
+    const nwsHealth = getNwsObsHealth(nwsTs);
+    const nwsWarnMin = Math.max(5, Math.round(nwsHealth.questionableAfterMin));
+    const nwsStaleMin = Math.max(nwsWarnMin + 1, Math.round(nwsHealth.severeAfterMin));
+    setAgeBadge('nws-age', nwsTs, 5, nwsWarnMin, nwsStaleMin);
     setAgeBadge('pws-age', pwsTs, 5, 12);
     setAgeBadge('owm-age', owmTs, 20, 45);
     setAgeBadge('alerts-age', alertsTs, 10, 25);
@@ -2859,14 +2889,26 @@ async function loadAll(forceFetch = false) {
     });
 
     const owmUsable = !!(cache.owm && cache.owm.available !== false);
-    setSourceDot('nws-dot', failures.length ? 'error' : 'ok');
+    const nwsHealth = getNwsObsHealth(cache.current?.timestamp);
+    const nwsDotStatus = failures.length
+        ? 'error'
+        : (nwsHealth.level === 'stale' ? 'error' : (nwsHealth.level === 'questionable' ? 'warn' : 'ok'));
+    setSourceDot('nws-dot', nwsDotStatus);
     setSourceDot('owm-dot', owmUsable ? 'ok' : 'warn');
     setSourceDot('pws-dot', cache.pws?.stations?.length ? 'ok' : 'warn');
     renderStormIndex();
 
     if (failures.length === 0) {
         clearError();
-        setStatus(owmUsable ? 'Live' : 'Live (NWS/PWS)', owmUsable ? 'ok' : 'loading');
+        if (nwsHealth.level === 'stale') {
+            const age = Math.round(nwsHealth.ageMin || 0);
+            setStatus(`Live (NWS stale ${age}m)`, 'warn');
+        } else if (nwsHealth.level === 'questionable') {
+            const age = Math.round(nwsHealth.ageMin || 0);
+            setStatus(`Live (NWS aging ${age}m)`, 'loading');
+        } else {
+            setStatus(owmUsable ? 'Live' : 'Live (NWS/PWS)', owmUsable ? 'ok' : 'loading');
+        }
         pushTimelineEvent('refresh', forceFetch ? 'Full refresh' : 'Initial load', owmUsable ? 'All feeds updated' : 'Primary feeds updated');
         
         // Persist latest good data for offline recovery.
