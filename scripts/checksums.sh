@@ -37,9 +37,19 @@ git archive --format=zip --prefix="OkoNebo-${VERSION}/" \
 
 echo "[checksums] computing SHA-256"
 
+# sha256sum (Linux) vs shasum -a 256 (macOS)
+if command -v sha256sum &>/dev/null; then
+    _sha256() { sha256sum "$1" | awk '{print $1}'; }
+elif command -v shasum &>/dev/null; then
+    _sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+else
+    echo "[checksums] ERROR: no sha256 tool found (macOS: brew install coreutils)" >&2
+    exit 1
+fi
+
 {
-    sha256sum "$ARCHIVE"     | sed "s|${TMPDIR}/||"
-    sha256sum "$ARCHIVE_ZIP" | sed "s|${TMPDIR}/||"
+    echo "$(_sha256 "$ARCHIVE")  OkoNebo-${VERSION}.tar.gz"
+    echo "$(_sha256 "$ARCHIVE_ZIP")  OkoNebo-${VERSION}.zip"
 } > "$OUTFILE"
 
 cp "$ARCHIVE"     "OkoNebo-${VERSION}.tar.gz"

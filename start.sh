@@ -1,32 +1,31 @@
-#!/bin/bash
-# Quick start script for the weather app
+#!/usr/bin/env bash
+# start.sh — start OkoNebo (Linux / macOS)
+# Requires: Docker with the Compose plugin (docker compose)
+# No Python required on the host.
 
+set -euo pipefail
 cd "$(dirname "$0")"
 
-# Activate or create venv if needed
-if [ ! -d "venv" ]; then
-    echo "Creating virtualenv..."
-    python3 -m venv venv
-fi
+# Touch persistence files so Docker bind-mounts get regular files, not dirs.
+touch secure_settings.db cache.db
 
-source venv/bin/activate
+echo "Starting OkoNebo..."
+docker compose up -d --build
 
-# Load optional local environment overrides (API keys, etc.)
-if [ -f .env ]; then
-    set -a
-    source .env
-    set +a
-fi
-
-# Install/update dependencies quietly
-pip install -q -r requirements.txt 2>/dev/null
-
-echo "Starting Weather App..."
-echo "Browser: http://localhost:8888"
-echo "API Docs: http://localhost:8888/docs"
-echo "OpenAPI Spec: http://localhost:8888/openapi.json"
 echo ""
-echo "Press Ctrl+C to stop"
+echo "  Dashboard : http://localhost:8888"
+echo "  API docs  : http://localhost:8888/docs"
 echo ""
 
-uvicorn app.main:app --host 0.0.0.0 --port 8888 --reload
+# Health check with retries
+for attempt in 1 2 3 4 5; do
+    if bash health-check.sh 2>/dev/null; then
+        exit 0
+    fi
+    echo "Waiting for container to be ready (attempt ${attempt}/5)..."
+    sleep 3
+done
+
+echo "Container did not become healthy in time. Check logs:"
+echo "  docker compose logs weather-app"
+exit 1

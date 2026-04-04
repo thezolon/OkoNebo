@@ -1,6 +1,8 @@
 # OkoNebo — Fresh Install Walkthrough
 
-A step-by-step guide from zero to a working dashboard. Nothing beyond what is listed here is required.
+A step-by-step guide from zero to a working dashboard on any supported platform.
+
+**Python is not required on the host. Docker handles everything.**
 
 ---
 
@@ -8,19 +10,29 @@ A step-by-step guide from zero to a working dashboard. Nothing beyond what is li
 
 | Requirement | Version | Notes |
 |-------------|---------|-------|
-| Docker Engine | 20.10+ | `docker --version` |
-| Docker Compose | v2 (plugin) | `docker compose version` |
+| Docker Desktop (Windows / macOS) or Docker Engine (Linux) | 20.10+ | [docker.com/get-started](https://www.docker.com/get-started) |
+| Docker Compose plugin | v2 | bundled with Docker Desktop; on Linux: `apt install docker-compose-plugin` |
 | Open port | 8888 | Configurable in `docker-compose.yml` |
 
-No Python, no Node.js, no build tools required.
-For a direct-Python install (Raspberry Pi, etc.) see [Direct Python / Raspberry Pi](#direct-python--raspberry-pi) at the bottom.
+No Python, no Node.js, no build tools required on the host.
 
 ---
 
 ## Step 1 — Copy the config
 
+**Linux / macOS:**
 ```bash
 cp config.yaml.example config.yaml
+```
+
+**Windows (PowerShell):**
+```powershell
+Copy-Item config.yaml.example config.yaml
+```
+
+**Windows (Command Prompt):**
+```bat
+copy config.yaml.example config.yaml
 ```
 
 Open `config.yaml` and set your location (the only required fields):
@@ -37,41 +49,58 @@ All other fields are optional; API keys can be added later through the UI.
 
 ## Step 2 — Start the container
 
+**Linux / macOS:**
 ```bash
+bash start.sh
+```
+
+**Windows (double-click or run from Command Prompt):**
+```bat
+start.bat
+```
+
+Or on all platforms directly via Docker:
+```
 docker compose up -d --build
 ```
 
 Expected output (abbreviated):
-
 ```
 [+] Building ...
-[+] Running 1/1
  ✔ Container weather-app  Started
 ```
 
-Verify it is healthy:
+---
 
+## Step 3 — Verify it is healthy
+
+**Linux / macOS:**
 ```bash
 bash health-check.sh
 ```
 
-Expected:
-
-```
-[health] container is running
-[health] /api/bootstrap returned HTTP 200
-[health] all checks passed
+**Windows (PowerShell):**
+```powershell
+.\health-check.ps1
 ```
 
-If health-check fails, inspect logs:
+Expected output:
+```
+Config endpoint:    OK (200)
+Bootstrap endpoint: OK (200)
+Current conditions: OK (502)   <- 502 is normal before location is configured
+...
+All systems operational!
+```
 
-```bash
+If the check fails, inspect logs:
+```
 docker compose logs weather-app
 ```
 
 ---
 
-## Step 3 — Open the browser
+## Step 4 — Open the browser
 
 Navigate to **http://localhost:8888**.
 
@@ -83,9 +112,7 @@ A **first-run overlay** titled "Welcome to OkoNebo" covers the page. This overla
 
 ---
 
-## Step 4 — Complete the first-run overlay
-
-The overlay has two required fields and several optional ones.
+## Step 5 — Complete the first-run overlay
 
 ### Required
 
@@ -102,126 +129,113 @@ The overlay has two required fields and several optional ones.
 | Map Provider | Esri (default), OSM, CARTO Light, CARTO Dark |
 | Provider API keys | WeatherAPI, Tomorrow.io, Visual Crossing, etc. |
 
-Click **Save & Continue**. The overlay should disappear and the dashboard should load.
+Click **Save & Continue**. The overlay disappears and the dashboard loads.
 
-> If you see a validation error ("Latitude must be between -90 and 90"), check that you entered decimal degrees, not degrees/minutes/seconds.
+> If you see a validation error ("Latitude must be between -90 and 90"), you entered degrees/minutes/seconds instead of decimal degrees.
+
+Your settings are stored on the server in `secure_settings.db`. They survive every `docker compose up -d --build` — you will not be asked to complete setup again unless you deliberately reset.
 
 ---
 
-## Step 5 — Verify data is flowing
+## Step 6 — Verify data is flowing
 
 After the overlay closes you should see:
 
-1. **Current conditions** — temperature, feels-like, humidity, wind (may show "No data" for a few seconds while the first request completes)
-2. **Active alerts** — empty if no alerts are active
+1. **Current conditions** — temperature, feels-like, humidity, wind
+2. **Active alerts** — empty if none active
 3. **7-day forecast** strip
 4. **Hourly trend** chart
 5. **Radar** map centred on your location
-6. **Diagnostics** row at the bottom (provider name, response time, cache age)
+6. **Diagnostics** row at the bottom (provider name, response time)
 
-If any panel shows "No data" or an error after 10 seconds, open the browser developer console and check for errors, then check:
-
-```bash
-docker compose logs weather-app --tail=50
-```
-
-The most common cause is an unreachable upstream provider. NWS is keyless and should work immediately for US locations. For non-US locations, add a WeatherAPI or Tomorrow.io key through **Setup → Providers**.
-
----
-
-## Step 6 — Explore the Setup panel
-
-Click the **⚙ Setup** tab in the navigation. Here you can change:
-
-- Home/work location and labels
-- Timezone
-- Map base layer
-- Provider API keys (stored encrypted; never logged)
-- Authentication settings
-
-Changes take effect immediately — no container restart needed.
+If any panel shows "No data" after 10 seconds, check logs. NWS is keyless and works immediately for US locations. For non-US, add a WeatherAPI or Tomorrow.io key via **Setup → Providers**.
 
 ---
 
 ## Step 7 (optional) — Enable authentication
 
-If the dashboard will be accessible from outside your local network, enable login protection.
+Create a `.env` file before starting the container:
 
-Create a `.env` file (one-time):
-
+**Linux / macOS:**
 ```bash
 cat > .env << 'EOF'
 AUTH_ENABLED=true
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=change-me-strong-password
-# Optional read-only viewer account:
-# VIEWER_USERNAME=viewer
-# VIEWER_PASSWORD=another-strong-password
 EOF
 ```
 
-Restart the container to apply:
-
-```bash
-docker compose down && docker compose up -d
+**Windows (PowerShell):**
+```powershell
+@"
+AUTH_ENABLED=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change-me-strong-password
+"@ | Set-Content .env
 ```
 
-The dashboard will now require login. Log in with the admin credentials to reach Setup.
+Restart to apply:
+```
+docker compose down && docker compose up -d
+```
 
 ---
 
 ## Confirming a healthy install — checklist
 
 ```
-[ ] docker compose ps  shows  weather-app  State=running / healthy
-[ ] bash health-check.sh  exits 0 with "all checks passed"
-[ ] http://localhost:8888  loads without errors in browser console
-[ ] First-run overlay appeared and was dismissed after saving valid lat/lon
-[ ] Current conditions panel shows data (or loading spinner, then data)
+[ ] docker compose ps  shows  weather-app  running/healthy
+[ ] health-check script exits 0 with "All systems operational"
+[ ] http://localhost:8888 loads without console errors
+[ ] First-run overlay appeared and was dismissed after saving lat/lon
+[ ] Current conditions panel shows data
 [ ] Diagnostics row shows a provider name and response time
-[ ] Setup panel opens, shows saved lat/lon values
+[ ] Setup panel opens and shows the saved lat/lon values
 ```
-
-All boxes checked → install is complete.
 
 ---
 
-## Direct Python / Raspberry Pi
+## Factory reset
 
-If Docker is not available:
+Normal rebuilds never wipe your data. To intentionally start over:
 
+**Linux / macOS:**
 ```bash
-# Requires Python 3.11+
-bash start.sh
-bash health-check.sh
+bash scripts/reset.sh              # wipe DBs only (keeps config.yaml)
+bash scripts/reset.sh --config     # wipe everything
 ```
 
-`start.sh` creates a virtualenv, installs dependencies from `requirements.txt`, and launches the Uvicorn server on port 8000 (not 8888 — Docker maps 8888→8000; direct Python always uses 8000).
-
-On a Raspberry Pi with a self-contained release tarball, the workflow is identical but a convenience wrapper is included:
-
-```bash
-cd weatherapp-release-*/
-bash deploy-on-pi.sh
+**Windows (PowerShell):**
+```powershell
+.\reset.ps1              # wipe DBs only
+.\reset.ps1 -Config      # wipe everything
 ```
 
 ---
 
 ## Upgrading
 
-```bash
+```
 git pull
 docker compose up -d --build
 ```
 
-`config.yaml` and `secure_settings.db` are not touched by upgrades.
+`config.yaml`, `secure_settings.db`, and `cache.db` are mounted from the host and are never touched by a rebuild.
+
 Always read `RELEASE_NOTES_v*.md` for breaking changes before upgrading across major versions.
 
 ---
 
 ## Removing OkoNebo
 
+**Linux / macOS:**
 ```bash
-docker compose down -v        # stops container, removes volumes
-rm config.yaml secure_settings.db cache.db   # optional: remove runtime data
+docker compose down
+rm -f config.yaml secure_settings.db cache.db
+```
+
+**Windows (PowerShell):**
+```powershell
+docker compose down
+Remove-Item -Force config.yaml, secure_settings.db, cache.db
 ```
