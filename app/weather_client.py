@@ -244,7 +244,7 @@ async def _resolve_point(lat: float, lon: float, user_agent: str) -> dict:
             "grid_y": props["gridY"],
         }
 
-    return await _get_or_refresh_shared(key, cache_type="point", ttl=86400, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="point_nws", ttl=86400, producer=_producer)
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +297,7 @@ async def get_current(lat: float, lon: float, user_agent: str) -> dict:
             ],
         }
 
-    return await _get_or_refresh_shared(key, cache_type="current", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="current_nws", ttl=300, producer=_producer)
 
 
 async def get_forecast(lat: float, lon: float, user_agent: str) -> list[dict]:
@@ -326,7 +326,7 @@ async def get_forecast(lat: float, lon: float, user_agent: str) -> list[dict]:
             for p in periods
         ]
 
-    return await _get_or_refresh_shared(key, cache_type="forecast", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="forecast_nws", ttl=900, producer=_producer)
 
 
 async def get_hourly(lat: float, lon: float, user_agent: str) -> list[dict]:
@@ -349,7 +349,7 @@ async def get_hourly(lat: float, lon: float, user_agent: str) -> list[dict]:
             for p in periods
         ]
 
-    return await _get_or_refresh_shared(key, cache_type="hourly", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="hourly_nws", ttl=900, producer=_producer)
 
 
 async def get_alerts(lat: float, lon: float, user_agent: str) -> list[dict]:
@@ -378,7 +378,7 @@ async def get_alerts(lat: float, lon: float, user_agent: str) -> list[dict]:
             for f in raw.get("features", [])
         ]
 
-    return await _get_or_refresh_shared(key, cache_type="alerts", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="alerts_nws", ttl=300, producer=_producer)
 
 
 async def get_alerts_multi(locations: list[dict], user_agent: str) -> list[dict]:
@@ -417,7 +417,7 @@ async def get_alerts_multi(locations: list[dict], user_agent: str) -> list[dict]
         _cache.set_threat_level(result)
         return result
 
-    return await _get_or_refresh_shared(cache_key, cache_type="alerts", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(cache_key, cache_type="alerts_nws", ttl=300, producer=_producer)
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +595,7 @@ async def get_weatherapi_current(lat: float, lon: float, api_key: str) -> dict[s
         )
         return _normalize_weatherapi_current(raw)
 
-    return await _get_or_refresh_shared(key, cache_type="current", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="current_weatherapi", ttl=300, producer=_producer)
 
 
 async def get_weatherapi_hourly(lat: float, lon: float, api_key: str) -> list[dict[str, Any]]:
@@ -648,7 +648,7 @@ async def get_weatherapi_hourly(lat: float, lon: float, api_key: str) -> list[di
         points.sort(key=lambda p: str(p.get("start_time") or ""))
         return points[:48]
 
-    return await _get_or_refresh_shared(key, cache_type="hourly", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="hourly_weatherapi", ttl=900, producer=_producer)
 
 
 async def get_weatherapi_forecast(lat: float, lon: float, api_key: str) -> list[dict[str, Any]]:
@@ -728,7 +728,7 @@ async def get_weatherapi_forecast(lat: float, lon: float, api_key: str) -> list[
 
         return periods
 
-    return await _get_or_refresh_shared(key, cache_type="forecast", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="forecast_weatherapi", ttl=900, producer=_producer)
 
 
 async def get_tomorrow_current(lat: float, lon: float, api_key: str) -> dict[str, Any]:
@@ -749,7 +749,7 @@ async def get_tomorrow_current(lat: float, lon: float, api_key: str) -> dict[str
         )
         return _normalize_tomorrow_current(raw)
 
-    return await _get_or_refresh_shared(key, cache_type="current", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="current_tomorrow", ttl=300, producer=_producer)
 
 
 async def get_tomorrow_hourly(lat: float, lon: float, api_key: str) -> list[dict[str, Any]]:
@@ -792,7 +792,7 @@ async def get_tomorrow_hourly(lat: float, lon: float, api_key: str) -> list[dict
 
         return points
 
-    return await _get_or_refresh_shared(key, cache_type="hourly", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="hourly_tomorrow", ttl=900, producer=_producer)
 
 
 async def get_tomorrow_forecast(lat: float, lon: float, api_key: str) -> list[dict[str, Any]]:
@@ -870,7 +870,7 @@ async def get_tomorrow_forecast(lat: float, lon: float, api_key: str) -> list[di
 
         return periods
 
-    return await _get_or_refresh_shared(key, cache_type="forecast", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="forecast_tomorrow", ttl=900, producer=_producer)
 
 
 async def get_visualcrossing_current(lat: float, lon: float, api_key: str) -> dict[str, Any]:
@@ -909,7 +909,7 @@ async def get_visualcrossing_current(lat: float, lon: float, api_key: str) -> di
             "cloud_layers": [],
         }
 
-    return await _get_or_refresh_shared(key, cache_type="current", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="current_visualcrossing", ttl=300, producer=_producer)
 
 
 async def get_visualcrossing_hourly(lat: float, lon: float, api_key: str) -> list[dict[str, Any]]:
@@ -950,7 +950,7 @@ async def get_visualcrossing_hourly(lat: float, lon: float, api_key: str) -> lis
         rows.sort(key=lambda r: str(r.get("start_time") or ""))
         return rows[:48]
 
-    return await _get_or_refresh_shared(key, cache_type="hourly", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="hourly_visualcrossing", ttl=900, producer=_producer)
 
 
 async def get_visualcrossing_forecast(lat: float, lon: float, api_key: str) -> list[dict[str, Any]]:
@@ -1025,7 +1025,7 @@ async def get_visualcrossing_forecast(lat: float, lon: float, api_key: str) -> l
 
         return periods
 
-    return await _get_or_refresh_shared(key, cache_type="forecast", ttl=900, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="forecast_visualcrossing", ttl=900, producer=_producer)
 
 
 # ---------------------------------------------------------------------------
@@ -1143,7 +1143,7 @@ async def get_aviationweather_metar(lat: float, lon: float, user_agent: str = "w
             raise RuntimeError("No METAR stations found in bounding box")
         return _normalize_metar(features[0])
 
-    return await _get_or_refresh_shared(key, cache_type="current", ttl=600, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="current_aviationweather", ttl=600, producer=_producer)
 
 
 # ---------------------------------------------------------------------------
@@ -1247,7 +1247,7 @@ async def get_noaa_tides(lat: float, lon: float, days: int = 2) -> dict[str, Any
             "updated_at": time.time(),
         }
 
-    return await _get_or_refresh_shared(key, cache_type="tides", ttl=1800, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="tides_noaa", ttl=1800, producer=_producer)
 
 
 # ---------------------------------------------------------------------------
@@ -1347,7 +1347,7 @@ async def get_meteomatics_current(lat: float, lon: float, api_key: str) -> dict[
 
         return _normalize_meteomatics(raw, ts)
 
-    return await _get_or_refresh_shared(key, cache_type="current", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="current_meteomatics", ttl=300, producer=_producer)
 
 
 async def _owm_get(url: str, params: dict) -> dict:
@@ -1419,7 +1419,7 @@ async def get_owm_onecall(lat: float, lon: float, api_key: str) -> dict:
             "alerts":          data.get("alerts", []),
         }
 
-    return await _get_or_refresh_shared(key, cache_type="owm", ttl=600, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="owm_onecall", ttl=600, producer=_producer)
 
 
 # ---------------------------------------------------------------------------
@@ -1532,7 +1532,7 @@ async def get_pws_observations(provider: str, station_ids: list[str], api_key: s
             "updated_at": time.time(),
         }
 
-    return await _get_or_refresh_shared(key, cache_type="pws", ttl=120, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="pws_current", ttl=120, producer=_producer)
 
 
 async def _pws_get_history_one(station_id: str, api_key: str) -> dict:
@@ -1628,4 +1628,4 @@ async def get_pws_trend(provider: str, station_ids: list[str], api_key: str, hou
             "updated_at": time.time(),
         }
 
-    return await _get_or_refresh_shared(key, cache_type="pws", ttl=300, producer=_producer)
+    return await _get_or_refresh_shared(key, cache_type="pws_trend", ttl=300, producer=_producer)

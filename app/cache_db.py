@@ -11,32 +11,108 @@ from typing import Optional, Dict, Any
 
 # Cache TTLs (seconds) - will be updated dynamically based on alert severity
 DEFAULT_TTL = {
-    "alerts": 900,        # 15 min baseline
-    "current": 900,       # 15 min
-    "forecast": 1800,     # 30 min
-    "hourly": 1800,       # 30 min
-    "pws": 600,           # 10 min
-    "owm": 900,           # 15 min
+    "alerts": 900,        # legacy bucket
+    "current": 900,       # legacy bucket
+    "forecast": 1800,     # legacy bucket
+    "hourly": 1800,       # legacy bucket
+    "pws": 600,           # legacy bucket
+    "owm": 900,           # legacy bucket
+
+    # Provider-specific buckets (used by weather_client cache_type values)
+    "point_nws": 86400,
+    "alerts_nws": 300,
+    "current_nws": 300,
+    "forecast_nws": 900,
+    "hourly_nws": 900,
+
+    "current_weatherapi": 300,
+    "forecast_weatherapi": 900,
+    "hourly_weatherapi": 900,
+
+    "current_tomorrow": 300,
+    "forecast_tomorrow": 900,
+    "hourly_tomorrow": 900,
+
+    "current_visualcrossing": 300,
+    "forecast_visualcrossing": 900,
+    "hourly_visualcrossing": 900,
+
+    "current_meteomatics": 300,
+    "current_aviationweather": 600,
+    "tides_noaa": 1800,
+    "owm_onecall": 600,
+    "pws_current": 120,
+    "pws_trend": 300,
 }
 
 # Shortened TTLs when storms are approaching or active
 STORM_APPROACHING_TTL = {
-    "alerts": 300,        # 5 min
-    "current": 300,       # 5 min
-    "forecast": 600,      # 10 min
-    "hourly": 300,        # 5 min
-    "pws": 180,           # 3 min
-    "owm": 300,           # 5 min
+    "alerts": 300,
+    "current": 300,
+    "forecast": 600,
+    "hourly": 300,
+    "pws": 180,
+    "owm": 300,
+
+    "point_nws": 86400,
+    "alerts_nws": 180,
+    "current_nws": 180,
+    "forecast_nws": 600,
+    "hourly_nws": 300,
+
+    "current_weatherapi": 240,
+    "forecast_weatherapi": 600,
+    "hourly_weatherapi": 600,
+
+    "current_tomorrow": 240,
+    "forecast_tomorrow": 600,
+    "hourly_tomorrow": 600,
+
+    "current_visualcrossing": 240,
+    "forecast_visualcrossing": 600,
+    "hourly_visualcrossing": 600,
+
+    "current_meteomatics": 240,
+    "current_aviationweather": 600,
+    "tides_noaa": 1800,
+    "owm_onecall": 300,
+    "pws_current": 120,
+    "pws_trend": 240,
 }
 
 # Aggressive TTLs during active storms or storm mode
 ACTIVE_STORM_TTL = {
-    "alerts": 120,        # 2 min (30s if in storm mode, but cache granularity is 2min)
-    "current": 300,       # 5 min
-    "forecast": 300,      # 5 min
-    "hourly": 300,        # 5 min
-    "pws": 120,           # 2 min
-    "owm": 300,           # 5 min
+    "alerts": 120,
+    "current": 300,
+    "forecast": 300,
+    "hourly": 300,
+    "pws": 120,
+    "owm": 300,
+
+    "point_nws": 86400,
+    "alerts_nws": 120,
+    "current_nws": 120,
+    "forecast_nws": 300,
+    "hourly_nws": 300,
+
+    "current_weatherapi": 180,
+    "forecast_weatherapi": 300,
+    "hourly_weatherapi": 300,
+
+    "current_tomorrow": 180,
+    "forecast_tomorrow": 300,
+    "hourly_tomorrow": 300,
+
+    "current_visualcrossing": 180,
+    "forecast_visualcrossing": 300,
+    "hourly_visualcrossing": 300,
+
+    "current_meteomatics": 180,
+    "current_aviationweather": 600,
+    "tides_noaa": 1800,
+    "owm_onecall": 300,
+    "pws_current": 90,
+    "pws_trend": 180,
 }
 
 
