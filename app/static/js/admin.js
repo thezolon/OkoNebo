@@ -345,8 +345,8 @@ async function saveSettings() {
 
     try {
         await api('/settings', 'POST', payload);
-        setStatus('setup-status', 'Settings saved.', 'ok');
-        setStatus('provider-pullcycle-status', 'Provider pull cycles saved.', 'ok');
+        setStatus('setup-status', '✓ Settings saved successfully!', 'ok');
+        setStatus('provider-pullcycle-status', '✓ Pull cycles saved!', 'ok');
         await loadSettings();
     } catch (err) {
         setStatus('setup-status', `Save failed: ${err.message}`, 'warn');

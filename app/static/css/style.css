@@ -680,7 +680,12 @@ html.admin-page body.admin-page {
     color: var(--t2);
 }
 
-.setup-status.ok { color: var(--ok); }
+.setup-status.ok {
+    color: var(--ok);
+    font-weight: bold;
+    font-size: 11px;
+}
+
 .setup-status.warn { color: var(--warn); }
 
 .auth-modal {
