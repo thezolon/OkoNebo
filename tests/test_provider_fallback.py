@@ -1,4 +1,5 @@
 import unittest
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
@@ -74,6 +75,59 @@ class ProviderFallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 502)
         detail = ctx.exception.detail
         self.assertEqual(detail.get("detail"), "No enabled/working current-conditions provider")
+
+    async def test_current_timeout_falls_back_to_weatherapi(self):
+        main.PROVIDERS = {
+            "nws": {"enabled": True},
+            "weatherapi": {"enabled": True},
+            "tomorrow": {"enabled": False},
+            "visualcrossing": {"enabled": False},
+        }
+
+        with (
+            patch("app.main.wc.get_current", new=AsyncMock(side_effect=asyncio.TimeoutError("nws timeout"))),
+            patch("app.main.wc.get_weatherapi_current", new=AsyncMock(return_value={"temp_f": 71})),
+            patch("app.main._provider_api_key", side_effect=lambda pid: "k" if pid == "weatherapi" else ""),
+        ):
+            payload = await main.api_current()
+
+        self.assertEqual(payload.get("source"), "weatherapi")
+        self.assertEqual(payload.get("temp_f"), 71)
+
+    async def test_forecast_rate_limited_falls_to_tomorrow(self):
+        main.PROVIDERS = {
+            "nws": {"enabled": False},
+            "weatherapi": {"enabled": True},
+            "tomorrow": {"enabled": True},
+            "visualcrossing": {"enabled": False},
+        }
+
+        with (
+            patch("app.main.wc.get_weatherapi_forecast", new=AsyncMock(side_effect=RuntimeError("429 Too Many Requests"))),
+            patch("app.main.wc.get_tomorrow_forecast", new=AsyncMock(return_value=[{"name": "Today"}])),
+            patch("app.main._provider_api_key", side_effect=lambda pid: "k" if pid in {"weatherapi", "tomorrow"} else ""),
+        ):
+            payload = await main.api_forecast()
+
+        self.assertEqual(payload[0].get("source"), "tomorrow")
+
+    async def test_hourly_503_falls_through_to_visualcrossing(self):
+        main.PROVIDERS = {
+            "nws": {"enabled": False},
+            "weatherapi": {"enabled": False},
+            "tomorrow": {"enabled": True},
+            "visualcrossing": {"enabled": True},
+        }
+
+        with (
+            patch("app.main.wc.get_tomorrow_hourly", new=AsyncMock(side_effect=RuntimeError("503 Service Unavailable"))),
+            patch("app.main.wc.get_visualcrossing_hourly", new=AsyncMock(return_value=[{"temp_f": 63}])),
+            patch("app.main._provider_api_key", side_effect=lambda pid: "k" if pid in {"tomorrow", "visualcrossing"} else ""),
+        ):
+            payload = await main.api_hourly()
+
+        self.assertEqual(payload[0].get("source"), "visualcrossing")
+        self.assertEqual(payload[0].get("temp_f"), 63)
 
 
 class FallbackErrorMetadataTests(unittest.IsolatedAsyncioTestCase):
@@ -226,6 +280,7 @@ class AdminWriteGuardTests(unittest.IsolatedAsyncioTestCase):
             json={"location": {"home": {"lat": 36.1, "lon": -96.0, "label": "Test"}}},
         )
         self.assertEqual(resp.status_code, 401)
+        self.assertTrue(resp.headers.get("X-Request-ID"))
 
     async def test_settings_post_blocked_for_viewer_role(self):
         main.AUTH_ENABLED = True
@@ -253,6 +308,7 @@ class AdminWriteGuardTests(unittest.IsolatedAsyncioTestCase):
         resp = client.get("/api/settings")
         # GET is not admin-only; must not return 401/403
         self.assertNotIn(resp.status_code, (401, 403))
+        self.assertTrue(resp.headers.get("X-Request-ID"))
 
 
 if __name__ == "__main__":

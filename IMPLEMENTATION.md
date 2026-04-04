@@ -82,11 +82,13 @@ Provider capability metadata is exposed via `/api/bootstrap` and used by fronten
 - Browser last-known-good cache for short outage resilience.
 - Frame cache TTL and bounded cleanup to avoid unbounded local storage growth.
 
-### Diagnostics
+## Diagnostics
 
 - `/api/debug` exposes runtime diagnostics and last client snapshot.
 - `/api/stats` exposes upstream call counters by provider.
-- UI timeline records key events for operator visibility.
+- **UI Event Timeline** records key events (observations, alerts, refreshes, system events) with timestamps for operator visibility.
+- **Timeline Search/Filter** allows operators to find events by category or search text (Shift+F to focus search).
+- **Admin Observability Dashboard** displays real-time metrics: request latency, error rates, server connection status, and operational health.
 
 ### Health and Smoke Semantics
 
@@ -99,6 +101,16 @@ For fresh installs with unset location/provider keys, weather data endpoints may
   - `/api/hourly`
 - Integration smoke (`tests/integration_smoke.py`) mirrors this behavior.
 
+## Mobile and Responsive UI
+
+- **Panel Layout Control**: Compact/Expanded toggle (Shift+C) adapts dashboard to small screens
+- **Collapsible Panels** reduce visual clutter on mobile while preserving full access to data
+- **Responsive Forecast Grid** adapts column count based on viewport width
+- **Touch-Optimized Controls** with larger tap targets (minimum 44px) for mobile accessibility
+- **Orientation Awareness** detects portrait/landscape and adjusts layout dynamically
+- **Persistent Layout State** saves user preference in localStorage across sessions
+- **Reset Layout Button** quickly restores default panel configuration
+
 ## Testing and CI
 
 ### Local Harness
@@ -106,7 +118,7 @@ For fresh installs with unset location/provider keys, weather data endpoints may
 `scripts/test_harness.sh` runs:
 
 1. Python compile checks
-2. Unit tests (`tests/test_provider_fallback.py` + `tests/test_setup_auth_integration.py`, 16 tests)
+2. Unit tests (`tests/test_panel_layout_ui.py` + `tests/test_provider_fallback.py` + `tests/test_setup_auth_integration.py`, 35 tests)
 3. Docker build/start
 4. Health check
 5. Integration smoke
@@ -116,7 +128,7 @@ For fresh installs with unset location/provider keys, weather data endpoints may
 
 `.github/workflows/ci.yml`:
 
-- `test` job: compile checks, pytest, Bandit scan
+- `test` job: compile checks, pytest (35 tests), Bandit scan
 - `docker` job: build, health check, smoke tests
 
 ## Key Files

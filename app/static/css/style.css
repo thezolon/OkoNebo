@@ -586,6 +586,27 @@ html.admin-page body.admin-page {
     color: var(--t2);
 }
 
+.panel-toggle {
+    min-width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-2);
+    color: var(--t2);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.panel-toggle:hover {
+    background: var(--bg-3);
+    color: var(--t1);
+}
+
+.panel-sec.collapsed .panel-sec-body {
+    display: none;
+}
+
 .debug-btn {
     min-width: 54px;
     padding: 4px 8px;
@@ -627,6 +648,33 @@ html.admin-page body.admin-page {
 
 .debug-val.online {
     color: var(--ok);
+}
+
+.pressure-token {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 999px;
+    font-size: 10px;
+    margin-left: 4px;
+    border: 1px solid var(--border);
+}
+
+.pressure-token.normal {
+    color: #86efac;
+    border-color: rgba(74, 222, 128, 0.35);
+    background: rgba(74, 222, 128, 0.16);
+}
+
+.pressure-token.elevated {
+    color: #fde68a;
+    border-color: rgba(250, 204, 21, 0.38);
+    background: rgba(250, 204, 21, 0.18);
+}
+
+.pressure-token.high {
+    color: #fecaca;
+    border-color: rgba(248, 113, 113, 0.38);
+    background: rgba(248, 113, 113, 0.18);
 }
 
 .setup-body {
@@ -687,6 +735,39 @@ html.admin-page body.admin-page {
 }
 
 .setup-status.warn { color: var(--warn); }
+
+.obs-badge,
+.obs-val {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #dbeafe;
+    background: rgba(125, 211, 252, 0.14);
+}
+
+.obs-normal {
+    background: rgba(74, 222, 128, 0.16);
+    border-color: rgba(74, 222, 128, 0.35);
+    color: #86efac;
+}
+
+.obs-elevated {
+    background: rgba(250, 204, 21, 0.18);
+    border-color: rgba(250, 204, 21, 0.38);
+    color: #fde68a;
+}
+
+.obs-high {
+    background: rgba(248, 113, 113, 0.18);
+    border-color: rgba(248, 113, 113, 0.38);
+    color: #fecaca;
+}
 
 .auth-modal {
     position: fixed;
@@ -1824,4 +1905,88 @@ html.admin-page body.admin-page {
 .setup-req::after {
   content: ' *';
   color: var(--alert-red, #e05c5c);
+}
+
+/* ── Mobile: Enhanced touch targets for sidebar ──────────────────────────── */
+@media (max-width: 900px) {
+  .panel-toggle {
+    min-width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .map-btn.debug-btn {
+    min-width: 60px;
+    height: 32px;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .panel-sec-hdr {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .forecast-list {
+    gap: 8px;
+  }
+
+  .forecast-card {
+    min-height: 64px;
+  }
+
+  .debug-btn {
+    flex: 1;
+    min-width: 54px;
+  }
+}
+
+/* ── Mobile: Phone portrait optimizations ─────────────────────────────────── */
+@media (max-width: 480px) {
+  .panel-toggle {
+    min-width: 28px;
+    height: 28px;
+    font-size: 12px;
+    border-radius: 4px;
+  }
+
+  .map-btn.debug-btn {
+    min-width: 50px;
+    height: 28px;
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .panel-sec-hdr {
+    margin-bottom: 6px;
+  }
+
+  .panel-sec-hdr h3 {
+    font-size: 10px;
+    flex: 1;
+    min-width: 100px;
+  }
+
+  .debug-grid {
+    gap: 4px;
+  }
+
+  .debug-row {
+    padding: 4px 6px;
+    gap: 4px;
+  }
+
+  .debug-lbl {
+    font-size: 8px;
+    min-width: 55px;
+  }
+
+  .debug-val {
+    font-size: 10px;
+  }
+
+  .panel-layout-status {
+    font-size: 9px;
+    line-height: 1.3;
+  }
 }

@@ -12,13 +12,17 @@ from pathlib import Path
 from collections import defaultdict, deque
 import asyncio
 import base64
+import contextvars
 import hashlib
 import hmac
 import json
+import logging
 import os
+import re
 import secrets
 import time
 from typing import Any
+from zoneinfo import available_timezones
 
 import yaml
 from fastapi import Body, FastAPI, HTTPException, Query, Request
@@ -48,6 +52,9 @@ def _load_config_file() -> dict[str, Any]:
     try:
         with open(_CONFIG_PATH) as f:
             return yaml.safe_load(f) or {}
+    except yaml.YAMLError:
+        # Corrupted YAML should not crash the app at import time.
+        return {}
     except FileNotFoundError:
         # Fresh clones / CI may not have config.yaml yet; runtime defaults still allow
         # tests and bootstrap endpoints to initialize safely.
@@ -128,6 +135,120 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
 }
 
 AGENT_PROFILE_VERSION = "1.0"
+_VALID_TIMEZONES = available_timezones()
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
+_LABEL_RE = re.compile(r"^[\w\s\-.,()&'/:]{1,100}$")
+_LOG_LEVEL = str(os.getenv("LOG_LEVEL") or "INFO").upper()
+logging.basicConfig(level=getattr(logging, _LOG_LEVEL, logging.INFO), format="%(message)s")
+LOGGER = logging.getLogger("okonebo")
+_REQUEST_ID_CTX: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="n/a")
+
+
+def _safe_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _valid_timezone(value: str) -> bool:
+    return bool(value) and value in _VALID_TIMEZONES
+
+
+def _sanitize_label(label: Any, fallback: str, field_name: str) -> str:
+    text = str(label or fallback).strip()
+    if not text:
+        text = fallback
+    if len(text) > 100:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be 1-100 characters")
+    if any(ord(ch) < 32 and ch not in {"\t", "\n", "\r"} for ch in text):
+        raise HTTPException(status_code=400, detail=f"{field_name} contains invalid control characters")
+    if not _LABEL_RE.match(text):
+        raise HTTPException(status_code=400, detail=f"{field_name} contains unsupported characters")
+    return text
+
+
+def _sanitize_user_agent(value: Any, fallback: str) -> str:
+    text = str(value if value is not None else fallback).strip()
+    if not text:
+        return str(fallback).strip() or "(weatherapp, local@example.com)"
+    if len(text) > 256:
+        raise HTTPException(status_code=400, detail="user_agent must be 1-256 characters")
+    if any(ord(ch) < 32 and ch not in {"\t", "\n", "\r"} for ch in text):
+        raise HTTPException(status_code=400, detail="user_agent contains invalid control characters")
+    return text
+
+
+def _sanitize_pws_stations(stations: Any) -> list[str]:
+    raw_list = stations if isinstance(stations, list) else []
+    cleaned = [str(item).strip() for item in raw_list if str(item).strip()]
+    if len(cleaned) > 10:
+        raise HTTPException(status_code=400, detail="pws.stations supports up to 10 station IDs")
+    for station in cleaned:
+        if len(station) > 64:
+            raise HTTPException(status_code=400, detail="pws station IDs must be <= 64 characters")
+    return cleaned
+
+
+def _sanitize_username(value: Any, role: str) -> str:
+    username = str(value or "").strip()
+    if not username:
+        return ""
+    if not _USERNAME_RE.match(username):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{role} username must be 3-64 chars using letters, numbers, dot, underscore, or dash",
+        )
+    return username
+
+
+def _validate_password_strength(password: str, role: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail=f"{role} password must be at least 8 characters")
+    has_alpha = any(ch.isalpha() for ch in password)
+    has_digit = any(ch.isdigit() for ch in password)
+    has_symbol = any(not ch.isalnum() for ch in password)
+    if (has_alpha + has_digit + has_symbol) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{role} password must include at least two character classes (letters, digits, symbols)",
+        )
+
+
+def _validate_runtime_config(cfg: dict[str, Any]) -> None:
+    location = cfg.get("location", {}) if isinstance(cfg.get("location", {}), dict) else {}
+    tz = str(location.get("timezone") or "UTC").strip()
+    if not _valid_timezone(tz):
+        location["timezone"] = "UTC"
+        cfg["location"] = location
+
+
+def _request_id(request: Request | None) -> str:
+    if request is None:
+        return _REQUEST_ID_CTX.get()
+    existing = getattr(request.state, "request_id", None)
+    if existing:
+        _REQUEST_ID_CTX.set(str(existing))
+        return str(existing)
+    incoming = str(request.headers.get("X-Request-ID") or "").strip()
+    rid = incoming or secrets.token_hex(8)
+    request.state.request_id = rid
+    _REQUEST_ID_CTX.set(rid)
+    return rid
+
+
+def _log_event(event: str, request: Request | None = None, level: str = "info", **fields: Any) -> None:
+    payload: dict[str, Any] = {
+        "ts": int(time.time()),
+        "event": event,
+        "request_id": _request_id(request),
+    }
+    payload.update(fields)
+    logger_fn = getattr(LOGGER, level, LOGGER.info)
+    try:
+        logger_fn(json.dumps(payload, sort_keys=True, default=str))
+    except Exception:
+        logger_fn(str(payload))
 
 
 def _default_provider_config() -> dict[str, dict[str, Any]]:
@@ -172,13 +293,15 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     global PROVIDERS, FIRST_RUN_COMPLETE, MAP_PROVIDER
     global AGENT_TOKENS, REVOKED_AGENT_TOKEN_IDS, PROVIDER_PULL_CYCLES
 
+    _validate_runtime_config(cfg)
     runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
 
     location = runtime_cfg.get("location", {}) or cfg.get("location", {})
-    LAT = float(location.get("lat", 0.0))
-    LON = float(location.get("lon", 0.0))
+    LAT = _safe_float(location.get("lat", 0.0), 0.0)
+    LON = _safe_float(location.get("lon", 0.0), 0.0)
     LABEL = str(location.get("label", "Configured Location"))
-    TIMEZONE = str(location.get("timezone", "UTC"))
+    configured_tz = str(location.get("timezone", "UTC"))
+    TIMEZONE = configured_tz if _valid_timezone(configured_tz) else "UTC"
     USER_AGENT = str(runtime_cfg.get("user_agent") or cfg.get("user_agent", "(weatherapp, local@example.com)"))
 
     runtime_pws = runtime_cfg.get("pws", {}) if isinstance(runtime_cfg.get("pws", {}), dict) else {}
@@ -278,6 +401,13 @@ RATE_LIMIT_WINDOW_SEC = 60
 RATE_LIMIT_MAX_PER_WINDOW = 800
 _RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 _RATE_LIMIT_BLOCKED_TOTAL = 0
+_PROVIDER_OUTCOMES: dict[str, int] = defaultdict(int)
+_OBSERVABILITY_RUNTIME: dict[str, Any] = {
+    "last_overall": None,
+    "last_change_ts": None,
+    "transitions_total": 0,
+    "history": [],
+}
 
 # Login brute-force protection — max attempts per IP per window.
 _LOGIN_ATTEMPT_WINDOW_SEC = 300  # 5 minutes
@@ -433,6 +563,136 @@ def _request_identity(request: Request) -> dict[str, Any] | None:
     return _decode_token(token)
 
 
+def _track_provider_outcome(endpoint: str, provider_id: str, outcome: str) -> None:
+    key = f"{endpoint}:{provider_id}:{outcome}"
+    _PROVIDER_OUTCOMES[key] += 1
+
+
+def _observability_health(upstream_stats: dict[str, Any], active_rate_limit_clients: int) -> dict[str, Any]:
+    retries = upstream_stats.get("retries", {}) if isinstance(upstream_stats.get("retries", {}), dict) else {}
+    cache_runtime = (
+        upstream_stats.get("cache_runtime", {})
+        if isinstance(upstream_stats.get("cache_runtime", {}), dict)
+        else {}
+    )
+
+    retry_attempted = 0
+    retry_exhausted = 0
+    for values in retries.values():
+        if isinstance(values, dict):
+            retry_attempted += int(values.get("attempted") or 0)
+            retry_exhausted += int(values.get("exhausted") or 0)
+
+    memory_hit = int(cache_runtime.get("memory_hit") or 0)
+    sqlite_hit = int(cache_runtime.get("sqlite_hit") or 0)
+    miss = int(cache_runtime.get("miss") or 0)
+    hit_total = memory_hit + sqlite_hit
+    cache_lookups = hit_total + miss
+    cache_hit_ratio = (hit_total / cache_lookups) if cache_lookups > 0 else 1.0
+
+    retry_pressure = "high" if retry_exhausted >= 3 else "elevated" if retry_attempted >= 8 else "normal"
+    rate_limit_pressure = "high" if active_rate_limit_clients >= 50 else "elevated" if active_rate_limit_clients >= 10 else "normal"
+    cache_pressure = "high" if cache_hit_ratio < 0.40 else "elevated" if cache_hit_ratio < 0.65 else "normal"
+
+    overall = "healthy"
+    if "high" in {retry_pressure, rate_limit_pressure, cache_pressure}:
+        overall = "degraded"
+    elif "elevated" in {retry_pressure, rate_limit_pressure, cache_pressure}:
+        overall = "warning"
+
+    return {
+        "overall": overall,
+        "retry_pressure": retry_pressure,
+        "rate_limit_pressure": rate_limit_pressure,
+        "cache_pressure": cache_pressure,
+        "retry_attempted_total": retry_attempted,
+        "retry_exhausted_total": retry_exhausted,
+        "cache_hit_ratio": round(cache_hit_ratio, 3),
+        "cache_lookups": cache_lookups,
+    }
+
+
+def _reset_observability_runtime() -> None:
+    _OBSERVABILITY_RUNTIME["last_overall"] = None
+    _OBSERVABILITY_RUNTIME["last_change_ts"] = None
+    _OBSERVABILITY_RUNTIME["transitions_total"] = 0
+    _OBSERVABILITY_RUNTIME["history"] = []
+
+
+def _record_observability_state(obs: dict[str, Any]) -> None:
+    now = time.time()
+    overall = str(obs.get("overall") or "healthy")
+
+    last = _OBSERVABILITY_RUNTIME.get("last_overall")
+    if last is None:
+        _OBSERVABILITY_RUNTIME["last_change_ts"] = now
+    elif last != overall:
+        _OBSERVABILITY_RUNTIME["transitions_total"] = int(_OBSERVABILITY_RUNTIME.get("transitions_total") or 0) + 1
+        _OBSERVABILITY_RUNTIME["last_change_ts"] = now
+
+    _OBSERVABILITY_RUNTIME["last_overall"] = overall
+
+    history = list(_OBSERVABILITY_RUNTIME.get("history") or [])
+    history.append({"ts": now, "overall": overall})
+    cutoff = now - 3600  # Keep one hour in memory.
+    history = [entry for entry in history if float(entry.get("ts") or 0) >= cutoff]
+    if len(history) > 240:
+        history = history[-240:]
+    _OBSERVABILITY_RUNTIME["history"] = history
+
+    win_cutoff = now - 600
+    recent = [entry for entry in history if float(entry.get("ts") or 0) >= win_cutoff]
+    flaps = 0
+    prev_overall = None
+    for entry in recent:
+        cur = str(entry.get("overall") or "")
+        if prev_overall is not None and cur and cur != prev_overall:
+            flaps += 1
+        if cur:
+            prev_overall = cur
+
+    last_change_ts = float(_OBSERVABILITY_RUNTIME.get("last_change_ts") or now)
+    obs["transitions_total"] = int(_OBSERVABILITY_RUNTIME.get("transitions_total") or 0)
+    obs["flaps_10m"] = flaps
+    obs["seconds_since_last_change"] = int(max(now - last_change_ts, 0))
+    obs["stability"] = "flapping" if flaps >= 4 else "watch" if flaps >= 2 else "stable"
+
+
+def _observability_recommendations(obs: dict[str, Any]) -> list[str]:
+    recs: list[str] = []
+
+    retry_pressure = str(obs.get("retry_pressure") or "normal")
+    cache_pressure = str(obs.get("cache_pressure") or "normal")
+    rate_limit_pressure = str(obs.get("rate_limit_pressure") or "normal")
+    stability = str(obs.get("stability") or "stable")
+    flaps = int(obs.get("flaps_10m") or 0)
+
+    if retry_pressure == "high":
+        recs.append("High retry pressure: verify upstream provider status and credentials, then consider increasing pull cycles.")
+    elif retry_pressure == "elevated":
+        recs.append("Elevated retries: monitor provider errors and watch for rate-limit trends.")
+
+    if cache_pressure == "high":
+        recs.append("Low cache hit ratio: increase provider pull-cycle TTLs or investigate cache invalidation churn.")
+    elif cache_pressure == "elevated":
+        recs.append("Cache pressure elevated: confirm cache lookups are not dominated by one-off keys.")
+
+    if rate_limit_pressure == "high":
+        recs.append("Rate-limit pressure is high: reduce API request bursts and review client polling behavior.")
+    elif rate_limit_pressure == "elevated":
+        recs.append("Rate-limit pressure elevated: watch active client count and adjust limits if needed.")
+
+    if stability == "flapping":
+        recs.insert(0, f"Observability is flapping ({flaps} transitions in 10m): investigate bursty traffic or unstable upstreams.")
+    elif stability == "watch":
+        recs.insert(0, "Observability recently shifted states: continue monitoring for another refresh cycle.")
+
+    if not recs:
+        recs.append("System telemetry looks healthy. Continue normal monitoring.")
+
+    return recs
+
+
 @app.middleware("http")
 async def api_rate_limiter(request: Request, call_next):
     global _RATE_LIMIT_BLOCKED_TOTAL
@@ -440,6 +700,8 @@ async def api_rate_limiter(request: Request, call_next):
     path = request.url.path
     if not path.startswith("/api/"):
         return await call_next(request)
+
+    req_id = _request_id(request)
 
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
@@ -451,9 +713,17 @@ async def api_rate_limiter(request: Request, call_next):
 
     if len(bucket) >= RATE_LIMIT_MAX_PER_WINDOW:
         _RATE_LIMIT_BLOCKED_TOTAL += 1
+        _log_event(
+            "rate_limit.blocked",
+            request,
+            level="warning",
+            path=path,
+            method=request.method.upper(),
+            client_ip=client_ip,
+        )
         return JSONResponse(
             status_code=429,
-            headers={"Retry-After": "15"},
+            headers={"Retry-After": "15", "X-Request-ID": req_id},
             content={
                 "detail": "Rate limit exceeded",
                 "window_seconds": RATE_LIMIT_WINDOW_SEC,
@@ -462,13 +732,16 @@ async def api_rate_limiter(request: Request, call_next):
         )
 
     bucket.append(now)
-    return await call_next(request)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = req_id
+    return response
 
 
 @app.middleware("http")
 async def api_auth_guard(request: Request, call_next):
     path = request.url.path
     method = request.method.upper()
+    req_id = _request_id(request)
 
     if not path.startswith("/api/"):
         return await call_next(request)
@@ -486,16 +759,35 @@ async def api_auth_guard(request: Request, call_next):
     admin_only = (path == "/api/settings" and method == "POST") or path.startswith("/api/agent-tokens")
 
     if AUTH_REQUIRE_VIEWER_LOGIN and identity is None:
-        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+        _log_event("auth.denied", request, level="warning", path=path, reason="viewer_login_required")
+        return JSONResponse(
+            status_code=401,
+            headers={"X-Request-ID": req_id},
+            content={"detail": "Authentication required"},
+        )
 
     if identity is not None and identity.get("role") == "agent":
         required_scope = AGENT_SCOPE_BY_PATH.get(path)
         if not required_scope:
-            return JSONResponse(status_code=403, content={"detail": "Agent token cannot access this endpoint"})
-        granted = {str(scope).strip() for scope in (identity.get("scopes") or []) if str(scope).strip()}
-        if required_scope not in granted:
+            _log_event("auth.denied", request, level="warning", path=path, reason="agent_endpoint_disallowed")
             return JSONResponse(
                 status_code=403,
+                headers={"X-Request-ID": req_id},
+                content={"detail": "Agent token cannot access this endpoint"},
+            )
+        granted = {str(scope).strip() for scope in (identity.get("scopes") or []) if str(scope).strip()}
+        if required_scope not in granted:
+            _log_event(
+                "auth.denied",
+                request,
+                level="warning",
+                path=path,
+                reason="agent_scope_missing",
+                required_scope=required_scope,
+            )
+            return JSONResponse(
+                status_code=403,
+                headers={"X-Request-ID": req_id},
                 content={
                     "detail": "Agent token missing required scope",
                     "required_scope": required_scope,
@@ -504,9 +796,19 @@ async def api_auth_guard(request: Request, call_next):
 
     if admin_only:
         if identity is None:
-            return JSONResponse(status_code=401, content={"detail": "Admin login required"})
+            _log_event("auth.denied", request, level="warning", path=path, reason="admin_login_required")
+            return JSONResponse(
+                status_code=401,
+                headers={"X-Request-ID": req_id},
+                content={"detail": "Admin login required"},
+            )
         if identity.get("role") != "admin":
-            return JSONResponse(status_code=403, content={"detail": "Admin role required"})
+            _log_event("auth.denied", request, level="warning", path=path, reason="admin_role_required")
+            return JSONResponse(
+                status_code=403,
+                headers={"X-Request-ID": req_id},
+                content={"detail": "Admin role required"},
+            )
 
     return await call_next(request)
 
@@ -807,6 +1109,14 @@ async def api_agent_tokens_post(request: Request, payload: dict[str, Any] = Body
     }
     AGENT_TOKENS.append(record)
     SECURE_STORE.set_json("auth.agent_tokens", AGENT_TOKENS)
+    _log_event(
+        "token.created",
+        request,
+        token_id=token_id,
+        created_by=str(identity.get("sub") or "admin"),
+        scope_count=len(clean_scopes),
+        ttl_hours=ttl_hours,
+    )
 
     return {
         "id": token_id,
@@ -839,6 +1149,7 @@ async def api_agent_tokens_delete(token_id: str, request: Request):
     REVOKED_AGENT_TOKEN_IDS.add(wanted)
     SECURE_STORE.set_json("auth.agent_tokens", AGENT_TOKENS)
     SECURE_STORE.set_json("auth.revoked_agent_token_ids", sorted(REVOKED_AGENT_TOKEN_IDS))
+    _log_event("token.revoked", request, token_id=wanted, updated=updated)
 
     return {"ok": True, "token_id": wanted, "updated": updated}
 
@@ -912,13 +1223,34 @@ async def api_current():
 
     async def _attempt(provider_id: str, fetcher):
         attempted.append(provider_id)
+        started = time.time()
         try:
             payload = await fetcher()
+            _track_provider_outcome("current", provider_id, "success")
+            _log_event(
+                "provider.attempt",
+                None,
+                endpoint="current",
+                provider=provider_id,
+                success=True,
+                duration_ms=int((time.time() - started) * 1000),
+            )
             if isinstance(payload, dict):
                 payload["source"] = provider_id
             return payload
         except Exception as exc:
             provider_errors[provider_id] = str(exc)
+            _track_provider_outcome("current", provider_id, "error")
+            _log_event(
+                "provider.attempt",
+                None,
+                level="warning",
+                endpoint="current",
+                provider=provider_id,
+                success=False,
+                duration_ms=int((time.time() - started) * 1000),
+                error=str(exc),
+            )
             return None
 
     if PROVIDERS.get("nws", {}).get("enabled"):
@@ -978,8 +1310,18 @@ async def api_forecast():
 
     async def _attempt(provider_id: str, fetcher):
         attempted.append(provider_id)
+        started = time.time()
         try:
             payload = await fetcher()
+            _track_provider_outcome("forecast", provider_id, "success")
+            _log_event(
+                "provider.attempt",
+                None,
+                endpoint="forecast",
+                provider=provider_id,
+                success=True,
+                duration_ms=int((time.time() - started) * 1000),
+            )
             if isinstance(payload, list):
                 for item in payload:
                     if isinstance(item, dict):
@@ -987,6 +1329,17 @@ async def api_forecast():
             return payload
         except Exception as exc:
             provider_errors[provider_id] = str(exc)
+            _track_provider_outcome("forecast", provider_id, "error")
+            _log_event(
+                "provider.attempt",
+                None,
+                level="warning",
+                endpoint="forecast",
+                provider=provider_id,
+                success=False,
+                duration_ms=int((time.time() - started) * 1000),
+                error=str(exc),
+            )
             return None
 
     if PROVIDERS.get("nws", {}).get("enabled"):
@@ -1039,8 +1392,18 @@ async def api_hourly():
 
     async def _attempt(provider_id: str, fetcher):
         attempted.append(provider_id)
+        started = time.time()
         try:
             payload = await fetcher()
+            _track_provider_outcome("hourly", provider_id, "success")
+            _log_event(
+                "provider.attempt",
+                None,
+                endpoint="hourly",
+                provider=provider_id,
+                success=True,
+                duration_ms=int((time.time() - started) * 1000),
+            )
             if isinstance(payload, list):
                 for item in payload:
                     if isinstance(item, dict):
@@ -1048,6 +1411,17 @@ async def api_hourly():
             return payload
         except Exception as exc:
             provider_errors[provider_id] = str(exc)
+            _track_provider_outcome("hourly", provider_id, "error")
+            _log_event(
+                "provider.attempt",
+                None,
+                level="warning",
+                endpoint="hourly",
+                provider=provider_id,
+                success=False,
+                duration_ms=int((time.time() - started) * 1000),
+                error=str(exc),
+            )
             return None
 
     if PROVIDERS.get("nws", {}).get("enabled"):
@@ -1272,6 +1646,11 @@ async def api_debug():
         if bucket:
             active_rate_limit_clients += 1
 
+    upstream_stats = wc.get_upstream_call_stats()
+    observability = _observability_health(upstream_stats, active_rate_limit_clients)
+    _record_observability_state(observability)
+    observability["recommendations"] = _observability_recommendations(observability)
+
     return {
         "server_time": int(time.time()),
         "server_started_at": SERVER_STARTED_AT,
@@ -1288,13 +1667,15 @@ async def api_debug():
             "pws_provider": PWS_PROVIDER,
             "pws_station_count": len(PWS_STATIONS),
         },
-        "upstream_calls": wc.get_upstream_call_stats(),
+        "upstream_calls": upstream_stats,
         "rate_limit": {
             "window_seconds": RATE_LIMIT_WINDOW_SEC,
             "max_requests_per_window": RATE_LIMIT_MAX_PER_WINDOW,
             "active_clients": active_rate_limit_clients,
             "blocked_total": _RATE_LIMIT_BLOCKED_TOTAL,
         },
+        "observability": observability,
+        "provider_outcomes": dict(_PROVIDER_OUTCOMES),
         "client": DEBUG_STATE["last_client_snapshot"],
         "client_updated_at": DEBUG_STATE["last_client_update"],
     }
@@ -1376,13 +1757,16 @@ async def api_settings_get():
     tags=["Config"],
 )
 async def api_settings_post(payload: dict[str, Any] = Body(...)):
+    start_ts = time.time()
     async with _cfg_lock:
         cfg = _load_config_file()
 
         location = payload.get("location", {})
         home = location.get("home", {})
         work = location.get("work")
-        timezone = location.get("timezone", cfg.get("location", {}).get("timezone", "UTC"))
+        timezone = str(location.get("timezone", cfg.get("location", {}).get("timezone", "UTC")) or "UTC").strip()
+        if not _valid_timezone(timezone):
+            raise HTTPException(status_code=400, detail="Invalid timezone")
 
         try:
             home_lat = float(home.get("lat"))
@@ -1392,12 +1776,12 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
         if not (-90.0 <= home_lat <= 90.0 and -180.0 <= home_lon <= 180.0):
             raise HTTPException(status_code=400, detail="Home location lat must be -90..90 and lon -180..180")
 
-        home_label = str(home.get("label") or "Home")
+        home_label = _sanitize_label(home.get("label"), "Home", "Home label")
         cfg["location"] = {
             "lat": home_lat,
             "lon": home_lon,
             "label": home_label,
-            "timezone": str(timezone or "UTC"),
+            "timezone": timezone,
         }
 
         alert_locations = [{"lat": home_lat, "lon": home_lon, "label": home_label}]
@@ -1413,21 +1797,20 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
                 {
                     "lat": work_lat,
                     "lon": work_lon,
-                    "label": str(work.get("label") or "Work"),
+                    "label": _sanitize_label(work.get("label"), "Work", "Work label"),
                 }
             )
         cfg["alert_locations"] = alert_locations
 
         if "user_agent" in payload:
-            cfg["user_agent"] = str(payload.get("user_agent") or cfg.get("user_agent") or USER_AGENT)
+            cfg["user_agent"] = _sanitize_user_agent(payload.get("user_agent"), cfg.get("user_agent") or USER_AGENT)
 
         pws_payload = payload.get("pws", {}) if isinstance(payload.get("pws", {}), dict) else {}
         pws_cfg = cfg.get("pws", {}) if isinstance(cfg.get("pws", {}), dict) else {}
         if "provider" in pws_payload:
             pws_cfg["provider"] = str(pws_payload.get("provider") or pws_cfg.get("provider") or "weather.com")
         if "stations" in pws_payload:
-            stations = pws_payload.get("stations") or []
-            pws_cfg["stations"] = [str(s).strip() for s in stations if str(s).strip()]
+            pws_cfg["stations"] = _sanitize_pws_stations(pws_payload.get("stations") or [])
         cfg["pws"] = pws_cfg
 
         auth_payload = payload.get("auth", {}) if isinstance(payload.get("auth", {}), dict) else {}
@@ -1437,7 +1820,7 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
         def upsert_user(role: str, username: str | None, password: str | None) -> None:
             if not username:
                 return
-            uname = str(username).strip()
+            uname = _sanitize_username(username, role)
             if not uname:
                 return
             existing = None
@@ -1451,6 +1834,7 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
             existing["username"] = uname
             existing["role"] = role
             if password:
+                _validate_password_strength(str(password), role)
                 existing["password_hash"] = _hash_password(password)
                 existing.pop("password", None)
 
@@ -1498,6 +1882,10 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
 
             if "api_key" in p_payload:
                 raw = str(p_payload.get("api_key") or "").strip()
+                if raw and len(raw) > 512:
+                    raise HTTPException(status_code=400, detail=f"{pid} api_key must be <= 512 characters")
+                if pid == "meteomatics" and raw and ":" not in raw:
+                    raise HTTPException(status_code=400, detail="meteomatics api_key must be username:password")
                 if raw:
                     SECURE_STORE.set_json(f"providers.{pid}.api_key", raw)
                 else:
@@ -1548,6 +1936,13 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
             yaml.safe_dump(cfg, f, sort_keys=False)
 
         _apply_config(cfg)
+
+    _log_event(
+        "settings.saved",
+        None,
+        changed_top_level=sorted(str(key) for key in payload.keys()),
+        duration_ms=int((time.time() - start_ts) * 1000),
+    )
 
     return {"ok": True, "message": "Settings saved", "restart_required": False}
 

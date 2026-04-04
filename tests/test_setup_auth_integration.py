@@ -140,6 +140,76 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
         self.assertIn("Authentication required", resp.text)
 
+    def test_settings_rejects_invalid_timezone(self):
+        main.AUTH_ENABLED = False
+        resp = self.client.post(
+            "/api/settings",
+            json={
+                "location": {
+                    "home": {"lat": 36.1539, "lon": -95.9928, "label": "Home"},
+                    "timezone": "Bad/Timezone",
+                },
+                "providers": {"nws": {"enabled": True}},
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Invalid timezone", resp.text)
+
+    def test_settings_rejects_weak_admin_password(self):
+        main.AUTH_ENABLED = False
+        resp = self.client.post(
+            "/api/settings",
+            json={
+                "location": {
+                    "home": {"lat": 36.1539, "lon": -95.9928, "label": "Home"},
+                    "timezone": "America/Chicago",
+                },
+                "auth": {
+                    "admin_username": "admin-local",
+                    "admin_password": "short",
+                },
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("admin password", resp.text)
+
+    def test_settings_rejects_invalid_viewer_username(self):
+        main.AUTH_ENABLED = False
+        resp = self.client.post(
+            "/api/settings",
+            json={
+                "location": {
+                    "home": {"lat": 36.1539, "lon": -95.9928, "label": "Home"},
+                    "timezone": "America/Chicago",
+                },
+                "auth": {
+                    "viewer_username": "x",
+                    "viewer_password": "viewer123!",
+                },
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("viewer username", resp.text)
+
+    def test_settings_rejects_too_many_pws_stations(self):
+        main.AUTH_ENABLED = False
+        stations = [f"STATION-{i}" for i in range(11)]
+        resp = self.client.post(
+            "/api/settings",
+            json={
+                "location": {
+                    "home": {"lat": 36.1539, "lon": -95.9928, "label": "Home"},
+                    "timezone": "America/Chicago",
+                },
+                "pws": {
+                    "provider": "weather.com",
+                    "stations": stations,
+                },
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("up to 10", resp.text)
+
 
 if __name__ == "__main__":
     unittest.main()

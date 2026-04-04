@@ -27,6 +27,17 @@ _UPSTREAM_CALL_STATS: dict[str, int] = {
     "pws_current": 0,
     "pws_history": 0,
 }
+_RETRY_RUNTIME_STATS: dict[str, dict[str, int]] = {}
+_CACHE_RUNTIME_STATS: dict[str, int] = {
+    "memory_hit": 0,
+    "sqlite_hit": 0,
+    "miss": 0,
+    "set": 0,
+    "stale_hit": 0,
+    "singleflight_wait": 0,
+    "refresh": 0,
+    "refresh_error": 0,
+}
 
 PROVIDER_PULL_CYCLE_DEFAULTS: dict[str, int] = {
     "nws": 300,
@@ -75,8 +86,24 @@ def get_upstream_call_stats() -> dict[str, Any]:
         "started_at": _UPSTREAM_STATS_STARTED_AT,
         "uptime_seconds": int(time.time()) - _UPSTREAM_STATS_STARTED_AT,
         "counts": counts,
+        "retries": {name: dict(values) for name, values in _RETRY_RUNTIME_STATS.items()},
+        "cache_runtime": dict(_CACHE_RUNTIME_STATS),
         "total": sum(counts.values()),
     }
+
+
+def reset_runtime_telemetry() -> None:
+    """Testing helper: reset transient runtime counters."""
+    for key in list(_UPSTREAM_CALL_STATS.keys()):
+        _UPSTREAM_CALL_STATS[key] = 0
+    _RETRY_RUNTIME_STATS.clear()
+    for key in list(_CACHE_RUNTIME_STATS.keys()):
+        _CACHE_RUNTIME_STATS[key] = 0
+
+
+def _mark_retry_stat(upstream_name: str, key: str) -> None:
+    bucket = _RETRY_RUNTIME_STATS.setdefault(upstream_name, {"attempted": 0, "exhausted": 0})
+    bucket[key] = bucket.get(key, 0) + 1
 
 
 def get_provider_pull_cycle_defaults() -> dict[str, int]:
@@ -150,6 +177,7 @@ class HybridTTLCache:
         async with self._lock:
             entry = self._store.get(key)
             if entry and time.monotonic() < entry.expires_at:
+                _CACHE_RUNTIME_STATS["memory_hit"] += 1
                 return entry.value
 
         # Not in memory or expired; try SQLite
@@ -159,10 +187,12 @@ class HybridTTLCache:
                 # Cache it in memory for fast subsequent access
                 async with self._lock:
                     self._store[key] = _Entry(db_value, self.effective_ttl(cache_type, 300))
+                _CACHE_RUNTIME_STATS["sqlite_hit"] += 1
                 return db_value
         except Exception:
             pass  # SQLite read error; continue to stale fallback
 
+        _CACHE_RUNTIME_STATS["miss"] += 1
         return None
 
     async def get_stale(self, key: str) -> Optional[Any]:
@@ -173,10 +203,14 @@ class HybridTTLCache:
         async with self._lock:
             entry = self._store.get(key)
             if entry:
+                _CACHE_RUNTIME_STATS["stale_hit"] += 1
                 return entry.value
 
         try:
-            return self._db.get(key, threat_level="default")
+            stale = self._db.get(key, threat_level="default")
+            if stale is not None:
+                _CACHE_RUNTIME_STATS["stale_hit"] += 1
+            return stale
         except Exception:
             return None
 
@@ -186,6 +220,7 @@ class HybridTTLCache:
         """
         async with self._lock:
             self._store[key] = _Entry(value, ttl)
+        _CACHE_RUNTIME_STATS["set"] += 1
 
         try:
             self._db.set(key, value, cache_type=cache_type, threat_level="default")
@@ -266,8 +301,11 @@ async def _get(user_agent: str, url: str, retries: int = 3) -> dict:
             )
             is_retryable = isinstance(exc, (httpx.TimeoutException, httpx.TransportError)) or is_retryable_http
             if attempt < retries and is_retryable:
+                _mark_retry_stat("nws", "attempted")
                 await asyncio.sleep(0.4 * attempt)
                 continue
+            if is_retryable:
+                _mark_retry_stat("nws", "exhausted")
             raise
 
     if last_exc is not None:
@@ -287,17 +325,21 @@ async def _get_or_refresh_shared(
         return cached
 
     refresh_lock = await _cache.get_refresh_lock(key)
+    if refresh_lock.locked():
+        _CACHE_RUNTIME_STATS["singleflight_wait"] += 1
     async with refresh_lock:
         cached = await _cache.get(key, cache_type=cache_type)
         if cached is not None:
             return cached
 
         try:
+            _CACHE_RUNTIME_STATS["refresh"] += 1
             value = await producer()
             effective_ttl = _cache.effective_ttl(cache_type, int(ttl))
             await _cache.set(key, value, ttl=effective_ttl, cache_type=cache_type)
             return value
         except Exception:
+            _CACHE_RUNTIME_STATS["refresh_error"] += 1
             stale = await _cache.get_stale(key)
             if stale is not None:
                 return stale
@@ -568,8 +610,11 @@ async def _json_get_with_retry(url: str, params: dict[str, Any], upstream_name: 
                 isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
                 or is_retryable_http
             ):
+                _mark_retry_stat(upstream_name, "attempted")
                 await asyncio.sleep(0.4 * attempt)
                 continue
+            if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)) or is_retryable_http:
+                _mark_retry_stat(upstream_name, "exhausted")
             raise
 
     if last_exc:

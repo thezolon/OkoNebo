@@ -16,6 +16,13 @@ let PROVIDER_TTL_DEFAULTS = {};
 let PROVIDER_TTL_BOUNDS = { min_seconds: 60, max_seconds: 86400 };
 let FORM_STATE = {};
 let UNSAVED_CHANGES = false;
+let OBS_LAST_SUCCESS_MS = 0;
+let OBS_POLL_TIMER = null;
+
+const OBS_POLL_INTERVAL_MS = 45000;
+const OBS_STALE_WARN_MS = 120000;
+const OBS_HISTORY_MAX = 20;
+const OBS_HISTORY = [];
 
 const PULL_CYCLE_LABELS = {
     nws: 'NWS',
@@ -90,6 +97,153 @@ function setStatus(id, message, tone = 'warn') {
     if (!el) return;
     el.textContent = message;
     el.className = `setup-status ${tone}`;
+}
+
+function prettyPressureLevel(level) {
+    const raw = String(level || 'unknown').toLowerCase();
+    if (raw === 'normal') return 'Normal';
+    if (raw === 'elevated') return 'Elevated';
+    if (raw === 'high') return 'High';
+    return 'Unknown';
+}
+
+function applyObsLevel(el, level) {
+    if (!el) return;
+    const raw = String(level || 'unknown').toLowerCase();
+    el.classList.remove('obs-normal', 'obs-elevated', 'obs-high');
+    if (raw === 'normal') el.classList.add('obs-normal');
+    else if (raw === 'elevated') el.classList.add('obs-elevated');
+    else if (raw === 'high') el.classList.add('obs-high');
+}
+
+function renderObservability(obs) {
+    const overallEl = document.getElementById('obs-overall');
+    const retryEl = document.getElementById('obs-retry');
+    const cacheEl = document.getElementById('obs-cache');
+    const rateEl = document.getElementById('obs-rate');
+    const statsEl = document.getElementById('obs-stats');
+    const updatedEl = document.getElementById('obs-updated');
+    const actionsEl = document.getElementById('obs-actions');
+    const historyEl = document.getElementById('obs-history');
+
+    if (!obs || typeof obs !== 'object') {
+        if (statsEl) statsEl.textContent = 'Observability payload unavailable.';
+        return;
+    }
+
+    const overall = String(obs.overall || 'unknown').toUpperCase();
+    const retry = prettyPressureLevel(obs.retry_pressure);
+    const cache = prettyPressureLevel(obs.cache_pressure);
+    const rate = prettyPressureLevel(obs.rate_limit_pressure);
+
+    if (overallEl) {
+        overallEl.textContent = overall;
+        applyObsLevel(overallEl, obs.overall === 'degraded' ? 'high' : obs.overall === 'warning' ? 'elevated' : 'normal');
+    }
+    if (retryEl) {
+        retryEl.textContent = retry;
+        applyObsLevel(retryEl, obs.retry_pressure);
+    }
+    if (cacheEl) {
+        cacheEl.textContent = cache;
+        applyObsLevel(cacheEl, obs.cache_pressure);
+    }
+    if (rateEl) {
+        rateEl.textContent = rate;
+        applyObsLevel(rateEl, obs.rate_limit_pressure);
+    }
+
+    const retryAttempted = Number(obs.retry_attempted_total || 0);
+    const retryExhausted = Number(obs.retry_exhausted_total || 0);
+    const cacheHitRatio = Number(obs.cache_hit_ratio || 0);
+    const cacheLookups = Number(obs.cache_lookups || 0);
+    const recommendations = Array.isArray(obs.recommendations) ? obs.recommendations : [];
+    if (statsEl) {
+        statsEl.textContent = `Retries attempted: ${retryAttempted} | Retries exhausted: ${retryExhausted} | Cache hit ratio: ${(cacheHitRatio * 100).toFixed(1)}% (${cacheLookups} lookups)`;
+    }
+    if (actionsEl) {
+        const actionText = recommendations.length ? recommendations.join(' | ') : 'System telemetry looks healthy. Continue normal monitoring.';
+        actionsEl.textContent = `Recommendations: ${actionText}`;
+    }
+
+    OBS_HISTORY.push({
+        at: new Date(),
+        overall,
+        retry,
+        cache,
+        rate,
+    });
+    if (OBS_HISTORY.length > OBS_HISTORY_MAX) {
+        OBS_HISTORY.splice(0, OBS_HISTORY.length - OBS_HISTORY_MAX);
+    }
+    if (historyEl) {
+        const recentItems = OBS_HISTORY.slice(-8);
+        const timeLabels = recentItems.map((item) => item.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit'})).join(' ');
+        const healthDots = recentItems.map((item) => {
+            if (item.overall === 'HEALTHY') return '🟢';
+            if (item.overall === 'WARNING') return '🟡';
+            if (item.overall === 'DEGRADED') return '🔴';
+            return '⚪';
+        }).join('');
+        historyEl.textContent = `History: ${healthDots} (${timeLabels})`;
+        historyEl.title = recentItems.map((item) => `${item.at.toLocaleTimeString()}: ${item.overall} (Retry: ${item.retry}, Cache: ${item.cache}, Rate: ${item.rate})`).join(' | ');
+    }
+
+    if (updatedEl) {
+        updatedEl.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+    }
+}
+
+async function loadObservability() {
+    const refreshBtn = document.getElementById('obs-refresh-btn');
+    const statsEl = document.getElementById('obs-stats');
+    if (refreshBtn) refreshBtn.disabled = true;
+    try {
+        const payload = await api('/debug');
+        renderObservability(payload?.observability || {});
+        OBS_LAST_SUCCESS_MS = Date.now();
+    } catch (err) {
+        if (statsEl) statsEl.textContent = `Observability load failed: ${err.message}`;
+    } finally {
+        updateObservabilityStaleness();
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+}
+
+function updateObservabilityStaleness() {
+    const staleEl = document.getElementById('obs-stale');
+    if (!staleEl) return;
+    if (!OBS_LAST_SUCCESS_MS) {
+        staleEl.textContent = 'Staleness: unknown';
+        staleEl.className = 'pws-meta';
+        return;
+    }
+    const ageMs = Date.now() - OBS_LAST_SUCCESS_MS;
+    const ageSec = Math.max(0, Math.round(ageMs / 1000));
+    const stale = ageMs >= OBS_STALE_WARN_MS;
+    staleEl.textContent = `Staleness: ${ageSec}s old${stale ? ' (stale)' : ''}`;
+    staleEl.className = stale ? 'pws-meta warn' : 'pws-meta';
+}
+
+async function loadObservabilityAuto() {
+    if (document.visibilityState === 'hidden') {
+        updateObservabilityStaleness();
+        return;
+    }
+    try {
+        const payload = await api('/debug');
+        renderObservability(payload?.observability || {});
+        OBS_LAST_SUCCESS_MS = Date.now();
+    } catch (_) {
+        // Keep background polling silent to avoid status churn.
+    } finally {
+        updateObservabilityStaleness();
+    }
+}
+
+function startObservabilityPolling() {
+    if (OBS_POLL_TIMER) clearInterval(OBS_POLL_TIMER);
+    OBS_POLL_TIMER = setInterval(loadObservabilityAuto, OBS_POLL_INTERVAL_MS);
 }
 
 async function api(path, method = 'GET', body = null, includeAuth = true) {
@@ -310,6 +464,7 @@ async function saveSettings() {
         await api('/settings', 'POST', payload);
         setStatus('setup-status', '✓ Settings saved successfully!', 'ok');
         await loadSettings();
+        await loadObservability();
         clearUnsaved();
     } catch (err) {
         setStatus('setup-status', `Save failed: ${err.message}`, 'warn');
@@ -343,7 +498,7 @@ function renderTokenList(items) {
                             </div>
                             <div style="font-size: 0.85em; color: #888; margin-top: 4px; font-family: monospace;">Created ${created}</div>
                         </div>
-                        <button id="${expandId}" class="map-btn" type="button" style="min-width: 80px;">Details</button>
+                        <button id="${expandId}" class="map-btn" type="button" style="min-width: 80px;">Expand</button>
                         <button class="map-btn" data-token-id="${item.id}" type="button" ${item.revoked ? 'disabled' : ''}>Delete</button>
                     </div>
                     <div id="${detailsId}" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
@@ -628,6 +783,10 @@ async function init() {
     });
     document.getElementById('agent-token-create-btn').addEventListener('click', createAgentToken);
     document.getElementById('test-all-providers').addEventListener('click', testAllProviders);
+    document.getElementById('obs-refresh-btn').addEventListener('click', loadObservability);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') loadObservabilityAuto();
+    });
     
     // Keyboard shortcut: Ctrl+S to save
     document.addEventListener('keydown', (e) => {
@@ -666,6 +825,8 @@ async function init() {
     await loadAuthMe();
     await loadSettings();
     await loadAgentTokens();
+    await loadObservability();
+    startObservabilityPolling();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -66,6 +66,7 @@ const REFRESH_JITTER_MAX_RATIO = 0.12;
 const SERVER_DEBUG_REFRESH_MS = 45000;
 const iemState = { times: [] };
 const CURRENT_SOURCE_STORAGE_KEY = 'weatherapp.currentSourceKey';
+const PANEL_COLLAPSE_STORAGE_KEY = 'weatherapp.panelCollapse';
 
 let chartInstance = null;
 let radarMap = null;
@@ -90,10 +91,55 @@ const runtime = {
     lastStormDetailRefreshAt: 0,
     serverDebug: null,
     lastServerDebugAt: 0,
+    observabilityHistory: [],
     firstRunRequired: false,
     authToken: null,
     authUser: null,
+    panelLayoutStatusTimer: null,
+    timelineFilterType: 'all',
+    timelineSearchText: '',
 };
+
+function normalizePressure(level) {
+    const raw = String(level || 'unknown').toLowerCase();
+    if (raw === 'normal' || raw === 'elevated' || raw === 'high') return raw;
+    return 'unknown';
+}
+
+function pressureScore(level) {
+    const normalized = normalizePressure(level);
+    if (normalized === 'high') return 2;
+    if (normalized === 'elevated') return 1;
+    return 0;
+}
+
+function pressureLabel(level) {
+    const normalized = normalizePressure(level);
+    if (normalized === 'normal') return 'Normal';
+    if (normalized === 'elevated') return 'Elevated';
+    if (normalized === 'high') return 'High';
+    return 'Unknown';
+}
+
+function summarizeGuidance(obs, recommendations) {
+    if (!Array.isArray(recommendations) || recommendations.length === 0) return '--';
+    if (normalizePressure(obs?.retry_pressure) === 'high') return 'High retries: check provider status/credentials and raise pull cycles.';
+    if (normalizePressure(obs?.cache_pressure) === 'high') return 'Low cache efficiency: increase TTL or inspect cache key churn.';
+    if (normalizePressure(obs?.rate_limit_pressure) === 'high') return 'Rate-limit pressure high: reduce bursts and tune client polling.';
+    if (normalizePressure(obs?.cache_pressure) === 'elevated') return 'Cache pressure elevated: confirm lookups are not one-off heavy.';
+    return String(recommendations[0]).replace(/\s+/g, ' ').trim();
+}
+
+function observabilityTrend() {
+    const points = runtime.observabilityHistory;
+    if (points.length < 4) return { label: 'Stable', icon: '→', cls: '' };
+    const recent = points.slice(-3).reduce((sum, item) => sum + item.score, 0) / 3;
+    const prev = points.slice(-6, -3).reduce((sum, item) => sum + item.score, 0) / Math.max(1, points.slice(-6, -3).length);
+    const delta = recent - prev;
+    if (delta > 0.34) return { label: 'Worsening', icon: '↑', cls: 'offline' };
+    if (delta < -0.34) return { label: 'Improving', icon: '↓', cls: 'online' };
+    return { label: 'Stable', icon: '→', cls: '' };
+}
 
 function getStoredAuthToken() {
     try {
@@ -110,6 +156,138 @@ function setStoredAuthToken(token) {
     } catch (err) {
         // Ignore storage failures
     }
+}
+
+function readPanelCollapseState() {
+    try {
+        const raw = window.localStorage.getItem(PANEL_COLLAPSE_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+        return {};
+    }
+}
+
+function writePanelCollapseState(stateMap) {
+    try {
+        window.localStorage.setItem(PANEL_COLLAPSE_STORAGE_KEY, JSON.stringify(stateMap));
+    } catch (err) {
+        // Ignore storage failures
+    }
+}
+
+function applyCollapsed(section, button, collapsed) {
+    section.classList.toggle('collapsed', !!collapsed);
+    if (!button) return;
+    button.textContent = collapsed ? '▸' : '▾';
+    button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    button.setAttribute('title', collapsed ? 'Expand section' : 'Collapse section');
+}
+
+function initCollapsiblePanels() {
+    const stateMap = readPanelCollapseState();
+    const panelIds = ['debug-section', 'admin-section', 'viewer-help-section', 'timeline-section'];
+
+    panelIds.forEach((panelId) => {
+        const section = document.getElementById(panelId);
+        if (!section) return;
+
+        const button = section.querySelector('.panel-toggle');
+        if (!button) return;
+
+        const defaultCollapsed = section.getAttribute('data-default-collapsed') === 'true';
+        const collapsed = typeof stateMap[panelId] === 'boolean' ? stateMap[panelId] : defaultCollapsed;
+        applyCollapsed(section, button, collapsed);
+
+        button.addEventListener('click', () => {
+            const next = !section.classList.contains('collapsed');
+            applyCollapsed(section, button, next);
+            stateMap[panelId] = next;
+            writePanelCollapseState(stateMap);
+            updateCompactLayoutButton();
+        });
+    });
+
+    updateCompactLayoutButton();
+}
+
+function updateCompactLayoutButton() {
+    const btn = document.getElementById('compact-panel-layout-btn');
+    if (!btn) return;
+    const panelIds = ['debug-section', 'admin-section', 'viewer-help-section', 'timeline-section'];
+    const allCollapsed = panelIds.every((panelId) => {
+        const section = document.getElementById(panelId);
+        return !!section && section.classList.contains('collapsed');
+    });
+    btn.textContent = allCollapsed ? 'Expand' : 'Compact';
+    btn.title = allCollapsed ? 'Expand utility panels' : 'Collapse utility panels';
+}
+
+function setPanelLayoutStatus(message, persist = false) {
+    const el = document.getElementById('panel-layout-status');
+    if (!el) return;
+    el.textContent = message;
+    if (runtime.panelLayoutStatusTimer) {
+        clearTimeout(runtime.panelLayoutStatusTimer);
+        runtime.panelLayoutStatusTimer = null;
+    }
+    if (persist) return;
+    runtime.panelLayoutStatusTimer = setTimeout(() => {
+        el.textContent = 'Use Compact to focus map + forecast panels quickly.';
+        runtime.panelLayoutStatusTimer = null;
+    }, 5000);
+}
+
+function isTypingContext(eventTarget) {
+    if (!eventTarget) return false;
+    const tag = String(eventTarget.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+    return !!eventTarget.isContentEditable;
+}
+
+function toggleCompactLayout() {
+    const panelIds = ['debug-section', 'admin-section', 'viewer-help-section', 'timeline-section'];
+    const stateMap = readPanelCollapseState();
+    const allCollapsed = panelIds.every((panelId) => {
+        const section = document.getElementById(panelId);
+        return !!section && section.classList.contains('collapsed');
+    });
+
+    panelIds.forEach((panelId) => {
+        const section = document.getElementById(panelId);
+        if (!section) return;
+        const button = section.querySelector('.panel-toggle');
+        const nextCollapsed = !allCollapsed;
+        applyCollapsed(section, button, nextCollapsed);
+        stateMap[panelId] = nextCollapsed;
+    });
+
+    writePanelCollapseState(stateMap);
+    updateCompactLayoutButton();
+    setPanelLayoutStatus(allCollapsed ? 'Layout expanded: utility sections reopened.' : 'Layout compacted: utility sections collapsed.');
+    pushTimelineEvent('system', allCollapsed ? 'Layout expanded' : 'Layout compacted', allCollapsed ? 'Utility sections reopened' : 'Utility sections collapsed for map focus');
+    renderTimeline();
+}
+
+function resetCollapsiblePanels() {
+    const panelIds = ['debug-section', 'admin-section', 'viewer-help-section', 'timeline-section'];
+    const nextState = {};
+
+    panelIds.forEach((panelId) => {
+        const section = document.getElementById(panelId);
+        if (!section) return;
+        const button = section.querySelector('.panel-toggle');
+        const defaultCollapsed = section.getAttribute('data-default-collapsed') === 'true';
+        applyCollapsed(section, button, defaultCollapsed);
+        nextState[panelId] = defaultCollapsed;
+    });
+
+    writePanelCollapseState(nextState);
+    pushTimelineEvent('system', 'Layout reset', 'Right-panel utility sections restored to defaults');
+    renderTimeline();
+    updateCompactLayoutButton();
+    setPanelLayoutStatus('Layout reset to defaults.', true);
 }
 
 function formatTime(isoOrUnix) {
@@ -277,15 +455,36 @@ function renderTimeline() {
     if (!list || !meta) return;
 
     const entries = buildTimelineEntries();
-    meta.textContent = entries.length ? `${entries.length} recent events` : 'latest events';
+    
+    // Apply filters
+    const filtered = entries.filter((entry) => {
+        // Type filter
+        if (runtime.timelineFilterType !== 'all' && entry.type !== runtime.timelineFilterType) {
+            return false;
+        }
+        
+        // Text search
+        if (runtime.timelineSearchText) {
+            const searchLower = runtime.timelineSearchText.toLowerCase();
+            const titleMatch = entry.title.toLowerCase().includes(searchLower);
+            const detailMatch = entry.detail.toLowerCase().includes(searchLower);
+            if (!titleMatch && !detailMatch) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+    
+    meta.textContent = filtered.length ? `${filtered.length} events` : 'latest events';
 
-    if (entries.length === 0) {
-        list.innerHTML = '<div class="timeline-empty">No activity yet</div>';
+    if (filtered.length === 0) {
+        list.innerHTML = '<div class="timeline-empty">No matching events</div>';
         return;
     }
 
     list.innerHTML = '';
-    entries.forEach((entry) => {
+    filtered.forEach((entry) => {
         const item = document.createElement('div');
         item.className = `timeline-item ${entry.type}`;
         item.innerHTML = `
@@ -296,6 +495,47 @@ function renderTimeline() {
             <div class="timeline-detail">${entry.detail || ''}</div>
         `;
         list.appendChild(item);
+    });
+}
+
+function setupTimelineFilters() {
+    const searchInput = document.getElementById('timeline-search');
+    const clearBtn = document.getElementById('timeline-clear-filter');
+    const filterBtns = document.querySelectorAll('[id^="timeline-filter-"]');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            runtime.timelineSearchText = e.target.value;
+            renderTimeline();
+        });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            runtime.timelineFilterType = 'all';
+            runtime.timelineSearchText = '';
+            if (searchInput) searchInput.value = '';
+            
+            filterBtns.forEach((btn) => {
+                btn.classList.remove('tab-active');
+                if (btn.id === 'timeline-filter-all') {
+                    btn.classList.add('tab-active');
+                }
+            });
+            renderTimeline();
+        });
+    }
+
+    filterBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const filterType = btn.getAttribute('data-filter');
+            runtime.timelineFilterType = filterType;
+
+            filterBtns.forEach((b) => b.classList.remove('tab-active'));
+            btn.classList.add('tab-active');
+
+            renderTimeline();
+        });
     });
 }
 
@@ -1203,6 +1443,11 @@ function renderDebugPanel() {
     const cacheEl = document.getElementById('debug-cache');
     const upstreamEl = document.getElementById('debug-upstream');
     const clientEl = document.getElementById('debug-client');
+    const observabilityEl = document.getElementById('debug-observability');
+    const pressureEl = document.getElementById('debug-pressure');
+    const stabilityEl = document.getElementById('debug-stability');
+    const trendEl = document.getElementById('debug-trend');
+    const guidanceEl = document.getElementById('debug-guidance');
 
     if (networkEl) {
         const online = !(state.isOffline || state.browserOffline);
@@ -1227,6 +1472,47 @@ function renderDebugPanel() {
         upstreamEl.textContent = Number.isFinite(total) ? `${total} calls / ${blocked} blocked` : '--';
     }
     if (clientEl) clientEl.textContent = state.autoRefresh ? 'Auto refresh on' : 'Manual refresh';
+
+    const obs = runtime.serverDebug?.observability;
+    if (observabilityEl) {
+        const overall = String(obs?.overall || '--').toUpperCase();
+        observabilityEl.textContent = overall;
+        observabilityEl.className = `debug-val ${overall === 'DEGRADED' ? 'offline' : 'online'}`;
+    }
+    if (pressureEl) {
+        const retry = normalizePressure(obs?.retry_pressure);
+        const cache = normalizePressure(obs?.cache_pressure);
+        const rate = normalizePressure(obs?.rate_limit_pressure);
+        pressureEl.innerHTML = [
+            `Retry:<span class="pressure-token ${retry}">${pressureLabel(retry)}</span>`,
+            `Cache:<span class="pressure-token ${cache}">${pressureLabel(cache)}</span>`,
+            `Rate:<span class="pressure-token ${rate}">${pressureLabel(rate)}</span>`,
+        ].join(' ');
+
+        const snapshotScore = pressureScore(retry) + pressureScore(cache) + pressureScore(rate);
+        runtime.observabilityHistory.push({ t: Date.now(), score: snapshotScore });
+        if (runtime.observabilityHistory.length > 20) {
+            runtime.observabilityHistory = runtime.observabilityHistory.slice(-20);
+        }
+    }
+    if (stabilityEl) {
+        const stability = String(obs?.stability || 'stable');
+        const flaps = Number(obs?.flaps_10m || 0);
+        const seconds = Number(obs?.seconds_since_last_change || 0);
+        const age = Number.isFinite(seconds) ? `${Math.round(seconds / 60)}m` : '--';
+        const label = stability === 'flapping' ? 'Flapping' : stability === 'watch' ? 'Watch' : 'Stable';
+        stabilityEl.textContent = `${label} (${flaps}/10m, ${age})`;
+        stabilityEl.className = `debug-val ${stability === 'flapping' ? 'offline' : stability === 'stable' ? 'online' : ''}`;
+    }
+    if (trendEl) {
+        const trend = observabilityTrend();
+        trendEl.textContent = `${trend.icon} ${trend.label}`;
+        trendEl.className = `debug-val ${trend.cls}`;
+    }
+    if (guidanceEl) {
+        const recs = Array.isArray(obs?.recommendations) ? obs.recommendations : [];
+        guidanceEl.textContent = summarizeGuidance(obs, recs);
+    }
 
     if (state.showDebugPanel) {
         console.log('=== DEBUG STATS ===', stats);
@@ -2950,6 +3236,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     updateOfflineUI();
     
     setupControls();
+    initCollapsiblePanels();
+    setupTimelineFilters();
+    const compactPanelLayoutBtn = document.getElementById('compact-panel-layout-btn');
+    if (compactPanelLayoutBtn) {
+        compactPanelLayoutBtn.addEventListener('click', toggleCompactLayout);
+    }
+    const resetPanelLayoutBtn = document.getElementById('reset-panel-layout-btn');
+    if (resetPanelLayoutBtn) {
+        resetPanelLayoutBtn.addEventListener('click', resetCollapsiblePanels);
+    }
     updateAlertTestButton();
     updateStormModeUi();
     await refreshServerDebugStats(true);
@@ -2978,6 +3274,14 @@ window.addEventListener('online', () => {
     pushTimelineEvent('system', 'Network restored', 'Browser reports online');
     updateOfflineUI();
     renderDebugPanel();
+});
+
+window.addEventListener('keydown', (event) => {
+    if (isTypingContext(event.target)) return;
+    if (event.key === 'C' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        toggleCompactLayout();
+    }
 });
 
 // Invalidate Leaflet map size on orientation change / window resize

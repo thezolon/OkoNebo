@@ -62,11 +62,35 @@ def main() -> int:
     ensure(debug_pos != -1, "Missing system status section")
     ensure(forecast_pos < debug_pos, "7-day forecast section must appear before system status")
 
+    for required_id in [
+        "compact-panel-layout-btn",
+        "panel-layout-status",
+        "debug-observability",
+        "debug-pressure",
+        "debug-stability",
+        "debug-trend",
+        "debug-guidance",
+        "reset-panel-layout-btn",
+        "toggle-debug-section",
+        "toggle-admin-section",
+        "toggle-viewer-help-section",
+        "toggle-timeline-section",
+    ]:
+        ensure(has_id(html, required_id), f"Missing dashboard debug field id: {required_id}")
+
     # Setup/admin controls now live on /admin.html.
     for required_id in [
         "setup-section",
         "setup-save-btn",
         "setup-discard-btn",
+        "obs-overall",
+        "obs-refresh-btn",
+        "obs-retry",
+        "obs-cache",
+        "obs-rate",
+        "obs-stale",
+        "obs-actions",
+        "obs-history",
         "setup-map-provider",
         "setup-home-lat",
         "setup-home-lon",

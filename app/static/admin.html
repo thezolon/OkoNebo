@@ -38,6 +38,27 @@
                 </div>
                 <div id="setup-body" class="setup-body">
                     <div style="display: grid; gap: 12px;">
+                        <!-- Observability Health -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid rgba(125,211,252,0.2);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+                                <div style="font-weight: bold; color: #7dd3fc;">Observability Health</div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span id="obs-overall" class="obs-badge">UNKNOWN</span>
+                                    <button id="obs-refresh-btn" class="map-btn" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                                <div><span class="setup-lbl">Retry Pressure</span><div id="obs-retry" class="obs-val">--</div></div>
+                                <div><span class="setup-lbl">Cache Pressure</span><div id="obs-cache" class="obs-val">--</div></div>
+                                <div><span class="setup-lbl">Rate-Limit Pressure</span><div id="obs-rate" class="obs-val">--</div></div>
+                            </div>
+                            <div id="obs-stats" class="pws-meta">No telemetry loaded yet.</div>
+                            <div id="obs-updated" class="pws-meta" style="margin-top: 4px; color: #888;">Updated: --</div>
+                            <div id="obs-stale" class="pws-meta" style="margin-top: 2px; color: #888;">Staleness: unknown</div>
+                            <div id="obs-actions" class="pws-meta" style="margin-top: 6px; color: #ddd;">Recommendations: --</div>
+                            <div id="obs-history" class="pws-meta" style="margin-top: 6px; color: #9ca3af;">History: --</div>
+                        </div>
+
                         <!-- Location Section -->
                         <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
                             <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Home Location</div>

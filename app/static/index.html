@@ -201,9 +201,16 @@
             <section class="panel-sec" id="debug-section">
                 <div class="panel-sec-hdr">
                     <h3>System Status</h3>
-                    <button id="debug-report-btn" class="map-btn debug-btn" type="button">Sync</button>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <button id="compact-panel-layout-btn" class="map-btn debug-btn" type="button" title="Collapse or expand utility panels">Compact</button>
+                        <button id="reset-panel-layout-btn" class="map-btn debug-btn" type="button" title="Reset panel layout">Reset Layout</button>
+                        <button id="debug-report-btn" class="map-btn debug-btn" type="button">Sync</button>
+                        <button id="toggle-debug-section" class="panel-toggle" type="button" aria-expanded="true" title="Collapse section">▾</button>
+                    </div>
                 </div>
-                <div class="debug-grid">
+                <div class="panel-sec-body">
+                <div id="panel-layout-status" class="pws-meta" aria-live="polite">Use Compact to focus map + forecast panels quickly.</div>
+                <div class="debug-grid" style="margin-top:8px;">
                     <div class="debug-row"><span class="debug-lbl">Network</span><span id="debug-network" class="debug-val">--</span></div>
                     <div class="debug-row"><span class="debug-lbl">Last Sync</span><span id="debug-last-sync" class="debug-val">--</span></div>
                     <div class="debug-row"><span class="debug-lbl">Refresh</span><span id="debug-refresh" class="debug-val">--</span></div>
@@ -211,13 +218,21 @@
                     <div class="debug-row"><span class="debug-lbl">Cache</span><span id="debug-cache" class="debug-val">--</span></div>
                     <div class="debug-row"><span class="debug-lbl">Upstream</span><span id="debug-upstream" class="debug-val">--</span></div>
                     <div class="debug-row"><span class="debug-lbl">Client</span><span id="debug-client" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Observability</span><span id="debug-observability" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Pressure</span><span id="debug-pressure" class="debug-val">--</span></div>
+                        <div class="debug-row"><span class="debug-lbl">Stability</span><span id="debug-stability" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Trend</span><span id="debug-trend" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Guidance</span><span id="debug-guidance" class="debug-val">--</span></div>
+                </div>
                 </div>
             </section>
 
-            <section class="panel-sec" id="admin-section">
+            <section class="panel-sec" id="admin-section" data-default-collapsed="true">
                 <div class="panel-sec-hdr">
                     <h3>Admin</h3>
+                    <button id="toggle-admin-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
                 </div>
+                <div class="panel-sec-body">
                 <p class="pws-meta">Setup, auth, and AI agent tokens now live on a dedicated admin page.</p>
                 <div class="setup-actions">
                     <a href="/admin.html" class="btn-refresh" style="text-align:center; text-decoration:none;">Open Admin Page</a>
@@ -225,25 +240,43 @@
                 <div class="setup-actions" style="margin-top:8px;">
                     <a href="/admin-help.html" class="map-btn" style="text-align:center; text-decoration:none;">Admin Help</a>
                 </div>
+                </div>
             </section>
 
-            <section class="panel-sec" id="viewer-help-section">
+            <section class="panel-sec" id="viewer-help-section" data-default-collapsed="true">
                 <div class="panel-sec-hdr">
                     <h3>Viewer Help</h3>
+                    <button id="toggle-viewer-help-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
                 </div>
+                <div class="panel-sec-body">
                 <p class="pws-meta">Need a quick tour of the dashboard? Open the in-app viewer guide.</p>
                 <div class="setup-actions">
                     <a href="/viewer-help.html" class="map-btn" style="text-align:center; text-decoration:none;">Open Viewer Help</a>
                 </div>
+                </div>
             </section>
 
-            <section class="panel-sec" id="timeline-section">
+            <section class="panel-sec" id="timeline-section" data-default-collapsed="true">
                 <div class="panel-sec-hdr">
                     <h3>Ops Timeline</h3>
                     <span id="timeline-meta" class="pws-meta">latest events</span>
+                    <button id="toggle-timeline-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
+                </div>
+                <div class="panel-sec-body">
+                <div style="margin-bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
+                    <input id="timeline-search" type="text" placeholder="Search events..." class="setup-input" style="flex: 1; min-width: 120px; font-size: 11px; padding: 4px 6px;">
+                    <button id="timeline-clear-filter" class="map-btn" type="button" title="Clear filters" style="padding: 4px 8px; font-size: 10px;">Clear</button>
+                </div>
+                <div style="margin-bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button id="timeline-filter-all" class="tab-btn tab-active" type="button" data-filter="all" style="font-size: 10px; padding: 3px 8px;">All</button>
+                    <button id="timeline-filter-obs" class="tab-btn" type="button" data-filter="obs" style="font-size: 10px; padding: 3px 8px;">Obs</button>
+                    <button id="timeline-filter-alert" class="tab-btn" type="button" data-filter="alert" style="font-size: 10px; padding: 3px 8px;">Alerts</button>
+                    <button id="timeline-filter-refresh" class="tab-btn" type="button" data-filter="refresh" style="font-size: 10px; padding: 3px 8px;">Refresh</button>
+                    <button id="timeline-filter-system" class="tab-btn" type="button" data-filter="system" style="font-size: 10px; padding: 3px 8px;">System</button>
                 </div>
                 <div id="timeline-list" class="timeline-list">
                     <div class="timeline-empty">No activity yet</div>
+                </div>
                 </div>
             </section>
 
