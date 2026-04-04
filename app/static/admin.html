@@ -37,18 +37,50 @@
                     <h3>Runtime Setup</h3>
                 </div>
                 <div id="setup-body" class="setup-body">
-                    <div class="setup-grid">
-                        <div class="setup-row"><span class="setup-lbl">Home Label</span><input id="setup-home-label" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Home Lat</span><input id="setup-home-lat" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Home Lon</span><input id="setup-home-lon" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Work Label</span><input id="setup-work-label" class="setup-input" type="text" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Work Lat</span><input id="setup-work-lat" class="setup-input" type="text" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Work Lon</span><input id="setup-work-lon" class="setup-input" type="text" placeholder="optional"></div>
-                        <div class="setup-row"><span class="setup-lbl">Timezone</span><input id="setup-timezone" class="setup-input" type="text" placeholder="America/Chicago"></div>
-                        <div class="setup-row"><span class="setup-lbl">User Agent</span><input id="setup-user-agent" class="setup-input" type="text"></div>
-                        <div class="setup-row"><span class="setup-lbl">Map Provider</span><select id="setup-map-provider" class="setup-input"><option value="esri_street">Esri Street</option><option value="osm">OpenStreetMap</option><option value="carto_light">CARTO Light</option><option value="carto_dark">CARTO Dark</option></select></div>
-                        <div class="setup-row"><span class="setup-lbl">PWS Provider</span><input id="setup-pws-provider" class="setup-input" type="text" placeholder="weather.com"></div>
-                        <div class="setup-row"><span class="setup-lbl">PWS Station IDs</span><input id="setup-pws-stations" class="setup-input" type="text" placeholder="ID1,ID2"></div>
+                    <div style="display: grid; gap: 12px;">
+                        <!-- Location Section -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Home Location</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                                <div><span class="setup-lbl">Label</span><input id="setup-home-label" class="setup-input" type="text" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">Latitude</span><input id="setup-home-lat" class="setup-input" type="text" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">Longitude</span><input id="setup-home-lon" class="setup-input" type="text" style="width: 100%;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Work Location Section -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Work Location (Optional)</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                                <div><span class="setup-lbl">Label</span><input id="setup-work-label" class="setup-input" type="text" placeholder="optional" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">Latitude</span><input id="setup-work-lat" class="setup-input" type="text" placeholder="optional" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">Longitude</span><input id="setup-work-lon" class="setup-input" type="text" placeholder="optional" style="width: 100%;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Location Settings -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Location Settings</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div><span class="setup-lbl">Timezone</span><input id="setup-timezone" class="setup-input" type="text" placeholder="America/Chicago" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">User Agent</span><input id="setup-user-agent" class="setup-input" type="text" style="width: 100%;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Map Provider -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Map Provider</div>
+                            <div><select id="setup-map-provider" class="setup-input" style="width: 100%;"><option value="esri_street">Esri Street</option><option value="osm">OpenStreetMap</option><option value="carto_light">CARTO Light</option><option value="carto_dark">CARTO Dark</option></select></div>
+                        </div>
+
+                        <!-- PWS Settings -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Personal Weather Station (PWS)</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div><span class="setup-lbl">Provider</span><input id="setup-pws-provider" class="setup-input" type="text" placeholder="weather.com" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">Station IDs</span><input id="setup-pws-stations" class="setup-input" type="text" placeholder="ID1,ID2" style="width: 100%;"></div>
+                            </div>
+                        </div>
 
                         <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; margin-top: 16px;">
                             <div style="display: grid; gap: 16px;">
@@ -171,13 +203,32 @@
                             </div>
                         </div>
 
-                        <div class="setup-row"><span class="setup-lbl">Enable Auth</span><label class="ctrl-lbl"><input id="setup-auth-enabled" type="checkbox"> Auth system enabled</label></div>
-                        <div class="setup-row"><span class="setup-lbl">Viewer Login</span><label class="ctrl-lbl"><input id="setup-auth-viewer-required" type="checkbox"> Require viewer login</label></div>
-                        <div class="setup-row"><span class="setup-lbl">Admin User</span><input id="setup-auth-admin-user" class="setup-input" type="text" placeholder="admin"></div>
-                        <div class="setup-row"><span class="setup-lbl">Admin Password</span><input id="setup-auth-admin-pass" class="setup-input" type="password" placeholder="leave blank to keep"></div>
-                        <div class="setup-row"><span class="setup-lbl">Viewer User</span><input id="setup-auth-viewer-user" class="setup-input" type="text" placeholder="viewer"></div>
-                        <div class="setup-row"><span class="setup-lbl">Viewer Password</span><input id="setup-auth-viewer-pass" class="setup-input" type="password" placeholder="optional"></div>
-                    </div>
+                        <!-- Authentication Section -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Authentication</div>
+                            <div style="display: grid; gap: 8px;">
+                                <label class="ctrl-lbl"><input id="setup-auth-enabled" type="checkbox"> Enable auth system</label>
+                                <label class="ctrl-lbl"><input id="setup-auth-viewer-required" type="checkbox"> Require viewer login</label>
+                            </div>
+                        </div>
+
+                        <!-- Admin Credentials -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Admin User</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div><span class="setup-lbl">Username</span><input id="setup-auth-admin-user" class="setup-input" type="text" placeholder="admin" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">Password</span><input id="setup-auth-admin-pass" class="setup-input" type="password" placeholder="leave blank to keep" style="width: 100%;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Viewer Credentials -->
+                        <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <div style="font-weight: bold; color: #7dd3fc; margin-bottom: 12px;">Viewer User</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div><span class="setup-lbl">Username</span><input id="setup-auth-viewer-user" class="setup-input" type="text" placeholder="viewer" style="width: 100%;"></div>
+                                <div><span class="setup-lbl">Password</span><input id="setup-auth-viewer-pass" class="setup-input" type="password" placeholder="optional" style="width: 100%;"></div>
+                            </div>
+                        </div>
                     <div class="setup-actions">
                         <button id="setup-save-btn" class="btn-refresh" type="button">Save Settings</button>
                     </div>
