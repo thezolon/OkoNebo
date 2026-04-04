@@ -1,114 +1,94 @@
 <svg viewBox="0 0 400 480" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <style>
-      .okonebo-text { font-family: Arial, sans-serif; font-size: 48px; font-weight: bold; letter-spacing: 2px; }
-      .weather-icon { fill: #1a1a1a; }
-      .hexagon-bg { fill: #f5f5f5; }
-      .grid-line { stroke: #cccccc; stroke-width: 1; }
-      .azimuth-text { font-family: Arial, sans-serif; font-size: 14px; fill: #1a1a1a; text-anchor: middle; }
+      .ink { fill: #1e232a; }
+      .ink-stroke { stroke: #1e232a; }
+      .grid { stroke: #d7dde5; stroke-width: 1.2; fill: none; }
+      .grid-strong { stroke: #b8c1cc; stroke-width: 1.6; fill: none; }
+      .label { fill: #4b5563; font: 600 12px 'Arial', sans-serif; letter-spacing: 0.8px; }
+      .wordmark { fill: #1e232a; font: 700 62px 'Arial', sans-serif; letter-spacing: 3px; }
     </style>
   </defs>
 
-  <!-- Polar grid background -->
-  <g id="polar-grid">
-    <!-- Concentric circles (distance rings) -->
-    <circle cx="200" cy="180" r="30" class="grid-line" fill="none"/>
-    <circle cx="200" cy="180" r="60" class="grid-line" fill="none"/>
-    <circle cx="200" cy="180" r="90" class="grid-line" fill="none"/>
-    <circle cx="200" cy="180" r="120" class="grid-line" fill="none"/>
-    
-    <!-- Radial lines (azimuth) -->
-    <line x1="200" y1="180" x2="200" y2="60" class="grid-line"/>
-    <line x1="200" y1="180" x2="265" y2="65" class="grid-line"/>
-    <line x1="200" y1="180" x2="307" y2="107" class="grid-line"/>
-    <line x1="200" y1="180" x2="320" y2="180" class="grid-line"/>
-    <line x1="200" y1="180" x2="307" y2="253" class="grid-line"/>
-    <line x1="200" y1="180" x2="265" y2="295" class="grid-line"/>
-    <line x1="200" y1="180" x2="200" y2="300" class="grid-line"/>
-    <line x1="200" y1="180" x2="135" y2="295" class="grid-line"/>
-    <line x1="200" y1="180" x2="93" y2="253" class="grid-line"/>
-    <line x1="200" y1="180" x2="80" y2="180" class="grid-line"/>
-    <line x1="200" y1="180" x2="93" y2="107" class="grid-line"/>
-    <line x1="200" y1="180" x2="135" y2="65" class="grid-line"/>
-  </g>
+  <rect x="0" y="0" width="400" height="480" fill="#f7f9fc"/>
 
-  <!-- Azimuth labels -->
-  <text x="200" y="45" class="azimuth-text">AZIMUTH</text>
-  <text x="285" y="25" class="azimuth-text" font-size="12">100</text>
-  <text x="340" y="50" class="azimuth-text" font-size="12">150</text>
-  <text x="360" y="185" class="azimuth-text" font-size="12">150</text>
-  <text x="340" y="310" class="azimuth-text" font-size="12">280</text>
-  <text x="200" y="330" class="azimuth-text" font-size="12">270</text>
-  <text x="60" y="310" class="azimuth-text" font-size="12">240</text>
-  <text x="40" y="185" class="azimuth-text" font-size="12">300</text>
-  <text x="60" y="50" class="azimuth-text" font-size="12">450</text>
+  <g transform="translate(200 190)">
+    <circle r="132" class="grid-strong"/>
+    <circle r="110" class="grid"/>
+    <circle r="88" class="grid"/>
+    <circle r="66" class="grid"/>
+    <circle r="44" class="grid"/>
 
-  <!-- Weather icons in hexagons -->
-  <g id="weather-icons">
-    <!-- Top-right: Sun -->
-    <g transform="translate(265, 90)">
-      <polygon points="0,-20 17.3,-10 17.3,10 0,20 -17.3,10 -17.3,-10" class="hexagon-bg" stroke="#1a1a1a" stroke-width="2"/>
-      <circle cx="0" cy="0" r="6" class="weather-icon"/>
-      <circle cx="-10" cy="-10" r="2" class="weather-icon"/>
-      <circle cx="10" cy="-10" r="2" class="weather-icon"/>
-      <circle cx="14" cy="0" r="2" class="weather-icon"/>
-      <circle cx="10" cy="10" r="2" class="weather-icon"/>
-      <circle cx="-10" cy="10" r="2" class="weather-icon"/>
-      <circle cx="-14" cy="0" r="2" class="weather-icon"/>
+    <line x1="-132" y1="0" x2="132" y2="0" class="grid-strong"/>
+    <line x1="0" y1="-132" x2="0" y2="132" class="grid-strong"/>
+    <line x1="-93" y1="-93" x2="93" y2="93" class="grid"/>
+    <line x1="93" y1="-93" x2="-93" y2="93" class="grid"/>
+    <line x1="-122" y1="-33" x2="122" y2="33" class="grid"/>
+    <line x1="-122" y1="33" x2="122" y2="-33" class="grid"/>
+
+    <text x="0" y="-150" text-anchor="middle" class="label">AZIMUTH</text>
+    <text x="-126" y="6" class="label">300</text>
+    <text x="112" y="6" class="label">150</text>
+    <text x="-14" y="146" class="label">270</text>
+
+    <g transform="translate(0,0)">
+      <circle r="15" fill="#f7f9fc" class="ink-stroke" stroke-width="2"/>
+      <circle r="7" class="ink"/>
+      <line x1="-18" y1="0" x2="18" y2="0" class="ink-stroke" stroke-width="2.2"/>
+      <line x1="0" y1="-18" x2="0" y2="18" class="ink-stroke" stroke-width="2.2"/>
+      <path d="M0 -26 L6 -14 L0 -17 L-6 -14 Z" class="ink"/>
+      <path d="M0 20 C-12 30 -10 43 0 50 C10 43 12 30 0 20 Z" class="ink"/>
+      <rect x="-2.5" y="42" width="5" height="10" class="ink" rx="1.5"/>
+      <path d="M-16 -9 C-26 -8 -30 7 -21 13" class="ink-stroke" stroke-width="2"/>
+      <path d="M16 -9 C26 -8 30 7 21 13" class="ink-stroke" stroke-width="2"/>
     </g>
 
-    <!-- Right: Hexagon (generic) -->
-    <g transform="translate(320, 140)">
-      <polygon points="0,-20 17.3,-10 17.3,10 0,20 -17.3,10 -17.3,-10" class="hexagon-bg" stroke="#1a1a1a" stroke-width="2" fill="#1a1a1a"/>
+    <g transform="translate(-62,-82)">
+      <polygon points="0,-23 20,-11.5 20,11.5 0,23 -20,11.5 -20,-11.5" fill="#2a323d"/>
+      <circle r="6" fill="#f7f9fc"/>
+      <line x1="0" y1="-13" x2="0" y2="-9" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="0" y1="13" x2="0" y2="9" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="-13" y1="0" x2="-9" y2="0" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="13" y1="0" x2="9" y2="0" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
     </g>
 
-    <!-- Bottom-right: Cloud/Rain -->
-    <g transform="translate(265, 210)">
-      <polygon points="0,-20 17.3,-10 17.3,10 0,20 -17.3,10 -17.3,-10" class="hexagon-bg" stroke="#1a1a1a" stroke-width="2"/>
-      <path d="M -8,-5 Q -12,-10 -8,-15 Q -2,-18 2,-15 Q 8,-18 10,-12 Q 14,-15 14,-8 Q 10,-5 6,-4 L -8,-4" class="weather-icon"/>
-      <line x1="-6" y1="5" x2="-4" y2="12" class="weather-icon" stroke-width="1.5"/>
-      <line x1="0" y1="5" x2="2" y2="12" class="weather-icon" stroke-width="1.5"/>
-      <line x1="6" y1="5" x2="8" y2="12" class="weather-icon" stroke-width="1.5"/>
+    <g transform="translate(0,-98)">
+      <polygon points="0,-23 20,-11.5 20,11.5 0,23 -20,11.5 -20,-11.5" fill="#5c6673"/>
     </g>
 
-    <!-- Center: Main compass circle with crosshairs -->
-    <g transform="translate(200, 180)">
-      <circle cx="0" cy="0" r="15" class="weather-icon" opacity="0.8"/>
-      <circle cx="0" cy="0" r="10" fill="white" stroke="#1a1a1a" stroke-width="1.5"/>
-      <circle cx="0" cy="0" r="3" class="weather-icon"/>
-      <!-- Crosshairs -->
-      <line x1="-8" y1="0" x2="8" y2="0" stroke="#1a1a1a" stroke-width="2"/>
-      <line x1="0" y1="-8" x2="0" y2="8" stroke="#1a1a1a" stroke-width="2"/>
-      <path d="M 0,-10 L 3,-6 L 0,-2 L -3,-6 Z" class="weather-icon"/>
+    <g transform="translate(62,-82)">
+      <polygon points="0,-23 20,-11.5 20,11.5 0,23 -20,11.5 -20,-11.5" fill="#2a323d"/>
+      <path d="M-11 -1 C-10 -8 -1 -10 4 -6 C7 -10 14 -7 13 -1 C11 4 6 4 2 4 L-10 4 C-12 4 -13 2 -11 -1 Z" fill="#f7f9fc"/>
+      <line x1="-6" y1="9" x2="-4" y2="14" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="0" y1="9" x2="2" y2="14" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="6" y1="9" x2="8" y2="14" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
     </g>
 
-    <!-- Bottom-left: Sun -->
-    <g transform="translate(135, 210)">
-      <polygon points="0,-20 17.3,-10 17.3,10 0,20 -17.3,10 -17.3,-10" class="hexagon-bg" stroke="#1a1a1a" stroke-width="2"/>
-      <circle cx="0" cy="0" r="6" class="weather-icon"/>
-      <circle cx="-10" cy="-10" r="2" class="weather-icon"/>
-      <circle cx="10" cy="-10" r="2" class="weather-icon"/>
-      <circle cx="14" cy="0" r="2" class="weather-icon"/>
-      <circle cx="10" cy="10" r="2" class="weather-icon"/>
-      <circle cx="-10" cy="10" r="2" class="weather-icon"/>
-      <circle cx="-14" cy="0" r="2" class="weather-icon"/>
+    <g transform="translate(0,-38)">
+      <polygon points="0,-23 20,-11.5 20,11.5 0,23 -20,11.5 -20,-11.5" fill="#6b7380"/>
     </g>
 
-    <!-- Left: Hexagon (generic) -->
-    <g transform="translate(80, 140)">
-      <polygon points="0,-20 17.3,-10 17.3,10 0,20 -17.3,10 -17.3,-10" class="hexagon-bg" stroke="#1a1a1a" stroke-width="2" fill="#1a1a1a"/>
+    <g transform="translate(-31,66)">
+      <polygon points="0,-23 20,-11.5 20,11.5 0,23 -20,11.5 -20,-11.5" fill="#2a323d"/>
     </g>
 
-    <!-- Top-left: Cloud/Rain -->
-    <g transform="translate(135, 90)">
-      <polygon points="0,-20 17.3,-10 17.3,10 0,20 -17.3,10 -17.3,-10" class="hexagon-bg" stroke="#1a1a1a" stroke-width="2"/>
-      <path d="M -8,-5 Q -12,-10 -8,-15 Q -2,-18 2,-15 Q 8,-18 10,-12 Q 14,-15 14,-8 Q 10,-5 6,-4 L -8,-4" class="weather-icon"/>
-      <line x1="-6" y1="5" x2="-4" y2="12" class="weather-icon" stroke-width="1.5"/>
-      <line x1="0" y1="5" x2="2" y2="12" class="weather-icon" stroke-width="1.5"/>
-      <line x1="6" y1="5" x2="8" y2="12" class="weather-icon" stroke-width="1.5"/>
+    <g transform="translate(31,66)">
+      <polygon points="0,-23 20,-11.5 20,11.5 0,23 -20,11.5 -20,-11.5" fill="#2a323d"/>
+      <path d="M-11 -1 C-10 -8 -1 -10 4 -6 C7 -10 14 -7 13 -1 C11 4 6 4 2 4 L-10 4 C-12 4 -13 2 -11 -1 Z" fill="#f7f9fc"/>
+      <line x1="-6" y1="9" x2="-4" y2="14" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="0" y1="9" x2="2" y2="14" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="6" y1="9" x2="8" y2="14" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+    </g>
+
+    <g transform="translate(-94,66)">
+      <polygon points="0,-23 20,-11.5 20,11.5 0,23 -20,11.5 -20,-11.5" fill="#2a323d"/>
+      <circle r="6" fill="#f7f9fc"/>
+      <line x1="0" y1="-13" x2="0" y2="-9" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="0" y1="13" x2="0" y2="9" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="-13" y1="0" x2="-9" y2="0" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
+      <line x1="13" y1="0" x2="9" y2="0" class="ink-stroke" stroke="#f7f9fc" stroke-width="1.8"/>
     </g>
   </g>
 
-  <!-- Text: OKONEBO -->
-  <text x="200" y="415" text-anchor="middle" class="okonebo-text" fill="#1a1a1a">OKONEBO</text>
+  <text x="200" y="442" text-anchor="middle" class="wordmark">OKONEBO</text>
 </svg>
