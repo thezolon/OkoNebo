@@ -37,6 +37,14 @@ function estimateCallsPerDay(seconds) {
     return Math.round((86400 / safe) * 10) / 10;
 }
 
+function formatSecondsAsTime(seconds) {
+    const safe = Math.max(1, Number(seconds) || 1);
+    if (safe < 60) return `${safe}s`;
+    if (safe < 3600) return `${Math.round(safe / 60 * 10) / 10}m`;
+    if (safe < 86400) return `${Math.round(safe / 3600 * 10) / 10}h`;
+    return `${Math.round(safe / 86400 * 10) / 10}d`;
+}
+
 function clampCycle(seconds) {
     const min = Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60);
     const max = Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400);
@@ -54,19 +62,24 @@ function renderProviderPullCycles(values = {}) {
         const label = PULL_CYCLE_LABELS[providerId] || providerId;
         const defaultVal = Number(PROVIDER_TTL_DEFAULTS?.[providerId] || 300);
         const value = clampCycle(values?.[providerId] ?? defaultVal);
+        const timeStr = formatSecondsAsTime(value);
         return `
             <div class="setup-row"><span class="setup-lbl">${label}</span>
-                <input
-                    id="pullcycle-${providerId}"
-                    class="setup-input"
-                    type="number"
-                    min="${Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60)}"
-                    max="${Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400)}"
-                    value="${value}"
-                    data-provider-id="${providerId}"
-                    style="max-width:170px;"
-                >
-                <span id="pullcycle-meta-${providerId}" class="pws-meta" style="margin-left:8px;">~${estimateCallsPerHour(value)}/hour • ~${estimateCallsPerDay(value)}/day</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input
+                        id="pullcycle-${providerId}"
+                        class="setup-input"
+                        type="number"
+                        min="${Number(PROVIDER_TTL_BOUNDS?.min_seconds || 60)}"
+                        max="${Number(PROVIDER_TTL_BOUNDS?.max_seconds || 86400)}"
+                        value="${value}"
+                        data-provider-id="${providerId}"
+                        placeholder="seconds"
+                        style="max-width:100px;"
+                    >
+                    <span id="pullcycle-time-${providerId}" class="pws-meta" style="min-width: 50px;">every ${timeStr}</span>
+                    <span id="pullcycle-meta-${providerId}" class="pws-meta">~${estimateCallsPerHour(value)}/h • ~${estimateCallsPerDay(value)}/d</span>
+                </div>
             </div>
         `;
     }).join('');
@@ -77,9 +90,13 @@ function renderProviderPullCycles(values = {}) {
             if (!pid) return;
             const value = clampCycle(input.value);
             input.value = String(value);
+            const timeEl = document.getElementById(`pullcycle-time-${pid}`);
             const meta = document.getElementById(`pullcycle-meta-${pid}`);
+            if (timeEl) {
+                timeEl.textContent = `every ${formatSecondsAsTime(value)}`;
+            }
             if (meta) {
-                meta.textContent = `~${estimateCallsPerHour(value)}/hour • ~${estimateCallsPerDay(value)}/day`;
+                meta.textContent = `~${estimateCallsPerHour(value)}/h • ~${estimateCallsPerDay(value)}/d`;
             }
         };
         input.addEventListener('change', updateMeta);
@@ -429,11 +446,55 @@ async function createAgentToken() {
     }
 }
 
+async function testProvider(providerId) {
+    const resultEl = document.getElementById(`test-result-${providerId}`);
+    const enabledEl = document.getElementById(`setup-provider-${providerId}-enabled`);
+
+    if (!enabledEl?.checked) {
+        if (resultEl) {
+            resultEl.textContent = '⚠ Provider not enabled';
+            resultEl.className = 'pws-meta warn';
+        }
+        return;
+    }
+
+    if (resultEl) {
+        resultEl.textContent = '⏳ Testing...';
+        resultEl.className = 'pws-meta';
+    }
+
+    try {
+        const data = await api(`/test-provider?provider=${encodeURIComponent(providerId)}`);
+        if (resultEl) {
+            if (data.ok) {
+                resultEl.textContent = `✓ ${data.message}`;
+                resultEl.className = 'pws-meta ok';
+            } else {
+                resultEl.textContent = `✗ ${data.error || 'Test failed'}`;
+                resultEl.className = 'pws-meta warn';
+            }
+        }
+    } catch (err) {
+        if (resultEl) {
+            resultEl.textContent = `✗ ${err.message}`;
+            resultEl.className = 'pws-meta warn';
+        }
+    }
+}
+
 async function init() {
     document.getElementById('admin-login-btn').addEventListener('click', login);
     document.getElementById('admin-logout-btn').addEventListener('click', logout);
     document.getElementById('setup-save-btn').addEventListener('click', saveSettings);
     document.getElementById('agent-token-create-btn').addEventListener('click', createAgentToken);
+
+    // Attach test provider handlers
+    PROVIDER_IDS.forEach((providerId) => {
+        const btn = document.getElementById(`test-provider-${providerId}`);
+        if (btn) {
+            btn.addEventListener('click', () => testProvider(providerId));
+        }
+    });
 
     await loadAuthConfig();
     await loadAuthMe();

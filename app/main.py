@@ -1552,6 +1552,54 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
     return {"ok": True, "message": "Settings saved", "restart_required": False}
 
 
+@app.get(
+    "/api/test-provider",
+    summary="Test provider connectivity",
+    description="Tests whether a provider API is working with the configured API key and location.",
+    tags=["Weather"],
+)
+async def api_test_provider(provider: str = Query("nws"), request: Request = None):
+    if not AUTH_ENABLED:
+        pass  # Allow in local mode
+    elif request:
+        identity = _request_identity(request)
+        if identity is None:
+            raise HTTPException(status_code=401, detail="Authentication required to test providers")
+        if identity.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin role required to test providers")
+
+    provider = str(provider or "nws").strip().lower()
+    if provider not in PROVIDER_IDS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+
+    if not PROVIDERS.get(provider, {}).get("enabled"):
+        raise HTTPException(status_code=400, detail=f"Provider {provider} is not enabled")
+
+    # Get API key if needed
+    api_key = None
+    if PROVIDER_META.get(provider, {}).get("requires_api_key"):
+        api_key = _provider_api_key(provider)
+        if not api_key:
+            raise HTTPException(status_code=400, detail=f"Provider {provider} requires an API key but none is configured")
+
+    try:
+        result = await wc.test_provider(
+            provider_id=provider,
+            lat=LAT,
+            lon=LON,
+            api_key=api_key,
+            user_agent=USER_AGENT,
+        )
+        if result.get("ok"):
+            return {"ok": True, "provider": provider, "message": result.get("message"), "data": result.get("data")}
+        else:
+            raise HTTPException(status_code=502, detail=result.get("error", "Provider test failed"))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Provider test error: {str(exc)}") from exc
+
+
 @app.post("/api/debug/client", include_in_schema=False)
 async def api_debug_client(payload: dict[str, Any] = Body(...)):
     DEBUG_STATE["last_client_snapshot"] = payload

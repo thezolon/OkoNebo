@@ -1710,3 +1710,152 @@ async def get_pws_trend(provider: str, station_ids: list[str], api_key: str, hou
         }
 
     return await _get_or_refresh_shared(key, cache_type="pws_trend", ttl=300, producer=_producer)
+
+
+async def test_provider(
+    provider_id: str,
+    lat: float,
+    lon: float,
+    api_key: str | None = None,
+    user_agent: str = "(weatherapp, local@example.com)",
+) -> dict[str, Any]:
+    """Test a provider's API connectivity. Returns {ok, message, data, error}."""
+    try:
+        if provider_id == "nws":
+            result = await get_current(lat, lon, user_agent)
+            return {
+                "ok": True,
+                "provider": "nws",
+                "message": "NWS API responding",
+                "data": {
+                    "temp": result.get("temp_f"),
+                    "condition": result.get("condition"),
+                    "timestamp": result.get("obs_time"),
+                },
+            }
+
+        elif provider_id == "openweather":
+            if not api_key:
+                return {"ok": False, "provider": "openweather", "error": "API key required"}
+            result = await get_owm_onecall(lat, lon, api_key)
+            return {
+                "ok": True,
+                "provider": "openweather",
+                "message": "OpenWeather API responding",
+                "data": {
+                    "temp": result.get("current", {}).get("temp"),
+                    "condition": result.get("current", {}).get("weather", [{}])[0].get("main"),
+                    "timestamp": "current",
+                },
+            }
+
+        elif provider_id == "weatherapi":
+            if not api_key:
+                return {"ok": False, "provider": "weatherapi", "error": "API key required"}
+            result = await get_weatherapi_current(lat, lon, api_key)
+            return {
+                "ok": True,
+                "provider": "weatherapi",
+                "message": "WeatherAPI responding",
+                "data": {
+                    "temp": result.get("temp_c"),
+                    "condition": result.get("condition"),
+                    "timestamp": result.get("last_updated"),
+                },
+            }
+
+        elif provider_id == "tomorrow":
+            if not api_key:
+                return {"ok": False, "provider": "tomorrow", "error": "API key required"}
+            result = await get_tomorrow_current(lat, lon, api_key)
+            return {
+                "ok": True,
+                "provider": "tomorrow",
+                "message": "Tomorrow.io API responding",
+                "data": {
+                    "temp": result.get("temp"),
+                    "condition": result.get("condition"),
+                    "timestamp": result.get("updated_at"),
+                },
+            }
+
+        elif provider_id == "meteomatics":
+            if not api_key:
+                return {"ok": False, "provider": "meteomatics", "error": "API key required"}
+            result = await get_meteomatics_current(lat, lon, api_key)
+            return {
+                "ok": True,
+                "provider": "meteomatics",
+                "message": "Meteomatics API responding",
+                "data": {
+                    "temp": result.get("temp_c"),
+                    "condition": result.get("condition"),
+                    "timestamp": result.get("timestamp"),
+                },
+            }
+
+        elif provider_id == "visualcrossing":
+            if not api_key:
+                return {"ok": False, "provider": "visualcrossing", "error": "API key required"}
+            result = await get_visualcrossing_current(lat, lon, api_key)
+            return {
+                "ok": True,
+                "provider": "visualcrossing",
+                "message": "Visual Crossing API responding",
+                "data": {
+                    "temp": result.get("temp_c"),
+                    "condition": result.get("condition"),
+                    "timestamp": result.get("datetime"),
+                },
+            }
+
+        elif provider_id == "aviationweather":
+            result = await get_aviationweather_metar(lat, lon, user_agent)
+            if result.get("station"):
+                return {
+                    "ok": True,
+                    "provider": "aviationweather",
+                    "message": "AviationWeather API responding",
+                    "data": {
+                        "station": result.get("station"),
+                        "temp": result.get("temp_c"),
+                        "condition": result.get("condition"),
+                        "timestamp": result.get("timestamp"),
+                    },
+                }
+            else:
+                return {
+                    "ok": False,
+                    "provider": "aviationweather",
+                    "error": "No METAR station found nearby",
+                }
+
+        elif provider_id == "noaa_tides":
+            result = await get_noaa_tides(lat, lon, days=1)
+            if result.get("station"):
+                return {
+                    "ok": True,
+                    "provider": "noaa_tides",
+                    "message": "NOAA Tides API responding",
+                    "data": {
+                        "station": result.get("station"),
+                        "timestamp": "current",
+                    },
+                }
+            else:
+                return {
+                    "ok": False,
+                    "provider": "noaa_tides",
+                    "error": "No tide station found nearby",
+                }
+
+        else:
+            return {"ok": False, "provider": provider_id, "error": f"Unknown provider: {provider_id}"}
+
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": provider_id,
+            "error": str(exc),
+        }
+
