@@ -11,3 +11,5 @@ services:
       - .env
     volumes:
       - ./config.yaml:/app/config.yaml
+      - ./secure_settings.db:/app/secure_settings.db
+      - ./cache.db:/app/cache.db
