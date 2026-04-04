@@ -145,6 +145,18 @@ def _provider_api_key(pid: str) -> str:
     return str(SECURE_STORE.get_json(f"providers.{pid}.api_key", "") or "")
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 _settings_seed = (
     os.getenv("SETTINGS_ENCRYPTION_KEY")
     or str((_cfg.get("auth", {}) or {}).get("token_secret") or "")
@@ -192,9 +204,38 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     auth_cfg = runtime_cfg.get("auth", {}) if isinstance(runtime_cfg.get("auth", {}), dict) else {}
     if not auth_cfg:
         auth_cfg = cfg.get("auth", {}) if isinstance(cfg.get("auth", {}), dict) else {}
-    AUTH_ENABLED = bool(auth_cfg.get("enabled", False))
-    AUTH_REQUIRE_VIEWER_LOGIN = bool(auth_cfg.get("require_viewer_login", False))
+    AUTH_ENABLED = _env_bool("AUTH_ENABLED", bool(auth_cfg.get("enabled", False)))
+    AUTH_REQUIRE_VIEWER_LOGIN = _env_bool(
+        "AUTH_REQUIRE_VIEWER_LOGIN",
+        bool(auth_cfg.get("require_viewer_login", False)),
+    )
     AUTH_USERS = list(SECURE_STORE.get_json("auth.users", auth_cfg.get("users", [])) or [])
+
+    env_admin_username = str(os.getenv("ADMIN_USERNAME") or "").strip()
+    env_admin_password = str(os.getenv("ADMIN_PASSWORD") or "").strip()
+    env_viewer_username = str(os.getenv("VIEWER_USERNAME") or "").strip()
+    env_viewer_password = str(os.getenv("VIEWER_PASSWORD") or "").strip()
+
+    def _upsert_env_user(role: str, username: str, password: str) -> None:
+        if not username or not password:
+            return
+        match = None
+        for user in AUTH_USERS:
+            if str(user.get("username", "")).strip().lower() == username.lower():
+                match = user
+                break
+        if match is None:
+            match = {}
+            AUTH_USERS.append(match)
+        match["username"] = username
+        match["role"] = role
+        # Runtime env bootstrap supports plaintext fallback for first login.
+        match["password"] = password
+        match.pop("password_hash", None)
+
+    _upsert_env_user("admin", env_admin_username, env_admin_password)
+    _upsert_env_user("viewer", env_viewer_username, env_viewer_password)
+
     AUTH_TOKEN_SECRET = str(
         os.getenv("AUTH_TOKEN_SECRET")
         or auth_cfg.get("token_secret")
