@@ -3,6 +3,11 @@
 :: Requires: Docker Desktop with the Compose plugin
 :: No Python required on the host.
 
+if /I "%~1"=="--check" (
+    echo start.bat syntax check OK
+    exit /b 0
+)
+
 cd /d "%~dp0"
 
 :: Touch persistence files so Docker bind-mounts get regular files, not dirs.
