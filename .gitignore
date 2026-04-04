@@ -1,0 +1,14 @@
+venv/
+.venv-test/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.vscode/
+dist/
+.env
+config.yaml
+cache.db
+secure_settings.db
+*.log
+*.sqlite

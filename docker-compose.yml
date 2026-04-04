@@ -1,0 +1,13 @@
+services:
+  weather-app:
+    build: .
+    container_name: weather-app
+    ports:
+      - "8888:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      - ./config.yaml:/app/config.yaml

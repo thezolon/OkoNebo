@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storm Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="alert-ticker" class="alert-ticker hidden">
+        <span id="ticker-label" class="ticker-label">ACTIVE ALERT</span>
+        <div class="ticker-track"><span id="ticker-text"></span></div>
+    </div>
+
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-top">
+                <h1 id="location-label" class="location-name">Loading...</h1>
+                <p id="last-updated" class="last-updated">--</p>
+            </div>
+
+            <div class="temp-block">
+                <div class="temp-main-row">
+                    <span id="current-temp" class="temp-big">--</span>
+                    <img id="current-icon" src="" alt="" class="condition-icon">
+                </div>
+                <div id="current-desc" class="condition-desc">--</div>
+                <div id="feels-like" class="feels-like">Feels like --</div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat"><span class="stat-lbl">Humidity</span><span id="humidity" class="stat-val">--%</span></div>
+                <div class="stat"><span class="stat-lbl">Wind</span><span id="wind-speed" class="stat-val">-- mph</span></div>
+                <div class="stat"><span class="stat-lbl">Direction</span><span id="wind-dir" class="stat-val">--</span></div>
+                <div class="stat" id="gust-row"><span class="stat-lbl">Gusts</span><span id="wind-gust" class="stat-val">--</span></div>
+                <div class="stat"><span class="stat-lbl">Pressure</span><span id="pressure" class="stat-val">-- inHg</span></div>
+                <div class="stat"><span class="stat-lbl">Visibility</span><span id="visibility" class="stat-val">-- mi</span></div>
+                <div class="stat"><span class="stat-lbl">Dewpoint</span><span id="dewpoint" class="stat-val">--</span></div>
+                <div class="stat" id="uv-row"><span class="stat-lbl">UV Index</span><span id="uv-index" class="stat-val">--</span></div>
+                <div class="stat"><span class="stat-lbl">Sunrise</span><span id="sunrise" class="stat-val">--</span></div>
+                <div class="stat"><span class="stat-lbl">Sunset</span><span id="sunset" class="stat-val">--</span></div>
+                <div class="stat stat-wide"><span class="stat-lbl">Station</span><span id="current-station" class="stat-val stat-small">--</span></div>
+            </div>
+
+            <div class="source-row">
+                <span id="nws-dot" class="src-dot dot-loading" title="NWS (weather.gov)">NWS</span>
+                <span id="owm-dot" class="src-dot dot-loading" title="OpenWeather One Call">OWM</span>
+                <span id="pws-dot" class="src-dot dot-loading" title="Personal Weather Stations">PWS</span>
+                <span id="storm-index" class="storm-index low">Storm: Low</span>
+                <span id="status-pill" class="status-pill loading">Loading</span>
+            </div>
+
+            <div class="source-carousel">
+                <button id="source-prev-btn" class="source-nav-btn" title="Previous source">&lt;-</button>
+                <div class="source-carousel-center">
+                    <div class="source-carousel-kicker">Current Source</div>
+                    <div id="source-carousel-label" class="source-carousel-label">Auto Blend</div>
+                </div>
+                <button id="source-next-btn" class="source-nav-btn" title="Next source">-&gt;</button>
+            </div>
+
+            <div class="source-age-grid" id="source-age-grid">
+                <div class="source-age-card"><span class="source-age-lbl">NWS Obs</span><span id="nws-age" class="source-age-val stale">--</span></div>
+                <div class="source-age-card"><span class="source-age-lbl">PWS</span><span id="pws-age" class="source-age-val stale">--</span></div>
+                <div class="source-age-card"><span class="source-age-lbl">OWM</span><span id="owm-age" class="source-age-val stale">--</span></div>
+                <div class="source-age-card"><span class="source-age-lbl">Alerts</span><span id="alerts-age" class="source-age-val stale">--</span></div>
+            </div>
+
+            <section class="panel-sec sidebar-alerts" id="alerts-section">
+                <div class="panel-sec-hdr">
+                    <h3>Active Alerts <span id="alert-count" class="badge"></span></h3>
+                    <select id="alert-filter" class="ctrl-sel-sm">
+                        <option value="all">All</option>
+                        <option value="extreme">Extreme</option>
+                        <option value="severe">Severe</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="minor">Minor</option>
+                    </select>
+                </div>
+                <div id="alerts-container" class="alerts-container">
+                    <div class="no-alerts">No active alerts</div>
+                </div>
+            </section>
+
+            <div class="sidebar-controls">
+                <div class="ctrl-row">
+                    <label class="ctrl-lbl" for="unit-select">Units</label>
+                    <select id="unit-select" class="ctrl-sel">
+                        <option value="f">F / mph</option>
+                        <option value="c">C / km/h</option>
+                    </select>
+                </div>
+                <div class="ctrl-row">
+                    <label class="ctrl-lbl">
+                        <input id="auto-refresh-toggle" type="checkbox" checked>
+                        Full auto-refresh
+                    </label>
+                </div>
+                <div class="ctrl-row storm-mode-row">
+                    <label class="ctrl-lbl">
+                        <input id="storm-mode-toggle" type="checkbox">
+                        Storm mode
+                    </label>
+                    <span id="storm-mode-badge" class="storm-mode-badge">30s critical refresh</span>
+                </div>
+                <div class="ctrl-row">
+                    <label class="ctrl-lbl" for="refresh-interval">Interval</label>
+                    <select id="refresh-interval" class="ctrl-sel">
+                        <option value="60000">1 minute</option>
+                        <option value="120000">2 minutes</option>
+                        <option value="300000" selected>5 minutes</option>
+                        <option value="600000">10 minutes</option>
+                        <option value="900000">15 minutes</option>
+                    </select>
+                </div>
+                <button id="refresh-btn" class="btn-refresh">Refresh Now</button>
+            </div>
+        </aside>
+
+        <main class="main-col">
+            <div class="map-toolbar">
+                <div class="map-toolbar-left">
+                    <button id="radar-step-back-btn" class="map-btn" title="Step back">Prev</button>
+                    <button id="radar-play-btn" class="map-btn map-btn-accent" title="Play">Play</button>
+                    <button id="radar-pause-btn" class="map-btn" title="Pause">Pause</button>
+                    <button id="radar-step-forward-btn" class="map-btn" title="Step forward">Next</button>
+                    <button id="radar-reset-view-btn" class="map-btn" title="Reset to home view">Reset View</button>
+                    <button id="radar-live-btn" class="map-btn" title="Jump to live radar">Live</button>
+                    <span id="radar-time" class="radar-time-lbl">--</span>
+                </div>
+                <div class="map-toolbar-right">
+                    <select id="radar-provider" class="ctrl-sel-sm">
+                        <option value="rainviewer">RainViewer</option>
+                        <option value="iem-archive" selected>NEXRAD Archive</option>
+                        <option value="iem-static">NEXRAD Static</option>
+                    </select>
+                    <select id="owm-overlay" class="ctrl-sel-sm">
+                        <option value="none">No Overlay</option>
+                        <option value="precipitation_new">OWM Precip</option>
+                        <option value="clouds_new">OWM Clouds</option>
+                        <option value="wind_new">OWM Wind</option>
+                        <option value="temp_new">OWM Temp</option>
+                        <option value="pressure_new">OWM Pressure</option>
+                    </select>
+                    <label class="ctrl-lbl-sm">
+                        Opacity
+                        <input id="radar-opacity" type="range" min="0.2" max="1" step="0.05" value="0.7" class="range-sm">
+                    </label>
+                    <label class="ctrl-lbl-sm">
+                        Speed
+                        <input id="radar-speed" type="range" min="200" max="1500" step="100" value="1200" class="range-sm">
+                    </label>
+                    <label class="ctrl-lbl-sm chk">
+                        <input id="radar-boomerang" type="checkbox"> Loop
+                    </label>
+                    <label class="ctrl-lbl-sm chk">
+                        <input id="alert-polygons-toggle" type="checkbox" checked> Alerts
+                    </label>
+                    <button id="alert-test-toggle-btn" class="map-btn" title="Toggle synthetic test alert polygon">Test Alert</button>
+                </div>
+            </div>
+
+            <div id="radar-map" class="radar-map"></div>
+
+            <div class="timeline-bar">
+                <input id="radar-frame" type="range" min="0" max="0" step="1" value="0" class="timeline-scrubber">
+            </div>
+
+            <div class="hourly-section">
+                <div class="hourly-header">
+                    <h3>48-Hour Forecast</h3>
+                    <div class="tab-group">
+                        <button id="tab-chart" class="tab-btn tab-active">Chart</button>
+                        <button id="tab-table" class="tab-btn">Table</button>
+                    </div>
+                </div>
+                <div id="hourly-chart-wrap" class="chart-wrap">
+                    <canvas id="hourly-chart"></canvas>
+                </div>
+                <div id="hourly-table-wrap" class="hourly-table-wrap hidden">
+                    <div id="hourly-table" class="hourly-table"></div>
+                </div>
+            </div>
+        </main>
+
+        <aside class="right-panel">
+            <section class="panel-sec" id="debug-section">
+                <div class="panel-sec-hdr">
+                    <h3>System Status</h3>
+                    <button id="debug-report-btn" class="map-btn debug-btn" type="button">Sync</button>
+                </div>
+                <div class="debug-grid">
+                    <div class="debug-row"><span class="debug-lbl">Network</span><span id="debug-network" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Last Sync</span><span id="debug-last-sync" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Refresh</span><span id="debug-refresh" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Requests</span><span id="debug-requests" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Cache</span><span id="debug-cache" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Upstream</span><span id="debug-upstream" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Client</span><span id="debug-client" class="debug-val">--</span></div>
+                </div>
+            </section>
+
+            <section class="panel-sec" id="setup-section">
+                <div class="panel-sec-hdr">
+                    <h3>Setup</h3>
+                    <button id="setup-toggle-btn" class="map-btn debug-btn" type="button">Show</button>
+                </div>
+                <div id="setup-body" class="setup-body hidden">
+                    <div class="setup-grid">
+                        <div class="setup-row"><span class="setup-lbl">Home Label</span><input id="setup-home-label" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Home Lat</span><input id="setup-home-lat" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Home Lon</span><input id="setup-home-lon" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Work Label</span><input id="setup-work-label" class="setup-input" type="text" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Work Lat</span><input id="setup-work-lat" class="setup-input" type="text" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Work Lon</span><input id="setup-work-lon" class="setup-input" type="text" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Timezone</span><input id="setup-timezone" class="setup-input" type="text" placeholder="America/Chicago"></div>
+                        <div class="setup-row"><span class="setup-lbl">User Agent</span><input id="setup-user-agent" class="setup-input" type="text"></div>
+                        <div class="setup-row"><span class="setup-lbl">Map Provider</span><select id="setup-map-provider" class="setup-input"><option value="esri_street">Esri Street</option><option value="osm">OpenStreetMap</option><option value="carto_light">CARTO Light</option><option value="carto_dark">CARTO Dark</option></select></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS Provider</span><input id="setup-pws-provider" class="setup-input" type="text" placeholder="weather.com"></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS Station IDs</span><input id="setup-pws-stations" class="setup-input" type="text" placeholder="ID1,ID2"></div>
+
+                        <div class="setup-row"><span class="setup-lbl">NWS</span><label class="ctrl-lbl"><input id="setup-provider-nws-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">OpenWeather</span><label class="ctrl-lbl"><input id="setup-provider-openweather-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">OWM API Key</span><input id="setup-provider-openweather-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS</span><label class="ctrl-lbl"><input id="setup-provider-pws-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">PWS API Key</span><input id="setup-provider-pws-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Tomorrow.io</span><label class="ctrl-lbl"><input id="setup-provider-tomorrow-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Tomorrow Key</span><input id="setup-provider-tomorrow-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Meteomatics</span><label class="ctrl-lbl"><input id="setup-provider-meteomatics-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Meteomatics Key</span><input id="setup-provider-meteomatics-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">WeatherAPI</span><label class="ctrl-lbl"><input id="setup-provider-weatherapi-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">WeatherAPI Key</span><input id="setup-provider-weatherapi-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Visual Crossing</span><label class="ctrl-lbl"><input id="setup-provider-visualcrossing-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Visual Crossing Key</span><input id="setup-provider-visualcrossing-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">AviationWeather</span><label class="ctrl-lbl"><input id="setup-provider-aviationweather-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">NOAA Tides</span><label class="ctrl-lbl"><input id="setup-provider-noaa_tides-enabled" type="checkbox"> Enable</label></div>
+
+                        <div class="setup-row"><span class="setup-lbl">Enable Auth</span><label class="ctrl-lbl"><input id="setup-auth-enabled" type="checkbox"> Auth system enabled</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Viewer Login</span><label class="ctrl-lbl"><input id="setup-auth-viewer-required" type="checkbox"> Require viewer login</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Admin User</span><input id="setup-auth-admin-user" class="setup-input" type="text" placeholder="admin"></div>
+                        <div class="setup-row"><span class="setup-lbl">Admin Password</span><input id="setup-auth-admin-pass" class="setup-input" type="password" placeholder="leave blank to keep"></div>
+                        <div class="setup-row"><span class="setup-lbl">Viewer User</span><input id="setup-auth-viewer-user" class="setup-input" type="text" placeholder="viewer"></div>
+                        <div class="setup-row"><span class="setup-lbl">Viewer Password</span><input id="setup-auth-viewer-pass" class="setup-input" type="password" placeholder="optional"></div>
+                    </div>
+                    <div class="setup-actions">
+                        <button id="setup-admin-login-btn" class="map-btn" type="button">Admin Login</button>
+                        <button id="setup-admin-logout-btn" class="map-btn" type="button">Logout</button>
+                        <button id="setup-save-btn" class="btn-refresh" type="button">Save Settings</button>
+                    </div>
+                    <div id="setup-status" class="setup-status">Config from local server</div>
+                </div>
+            </section>
+
+            <section class="panel-sec" id="timeline-section">
+                <div class="panel-sec-hdr">
+                    <h3>Ops Timeline</h3>
+                    <span id="timeline-meta" class="pws-meta">latest events</span>
+                </div>
+                <div id="timeline-list" class="timeline-list">
+                    <div class="timeline-empty">No activity yet</div>
+                </div>
+            </section>
+
+            <section class="panel-sec" id="pws-section" style="display:none">
+                <div class="panel-sec-hdr">
+                    <h3>PWS Pair (Property)</h3>
+                    <div class="pws-head-controls">
+                        <select id="pws-trend-hours" class="ctrl-sel-sm">
+                            <option value="1">1h</option>
+                            <option value="2">2h</option>
+                            <option value="3" selected>3h</option>
+                        </select>
+                        <span id="pws-meta" class="pws-meta">--</span>
+                    </div>
+                </div>
+                <div id="pws-cards" class="pws-cards"></div>
+                <div id="pws-delta" class="pws-delta"></div>
+            </section>
+
+            <section class="panel-sec">
+                <div class="panel-sec-hdr">
+                    <h3>7-Day Forecast</h3>
+                    <select id="forecast-filter" class="ctrl-sel-sm">
+                        <option value="day">Days</option>
+                        <option value="all">All</option>
+                        <option value="night">Nights</option>
+                    </select>
+                </div>
+                <div id="forecast-list" class="forecast-list"></div>
+            </section>
+
+            <section class="panel-sec" id="owm-daily-section" style="display:none">
+                <div class="panel-sec-hdr">
+                    <h3>Extended (OWM)</h3>
+                </div>
+                <div id="owm-daily-list" class="forecast-list"></div>
+            </section>
+        </aside>
+    </div>
+
+    <div id="error-toast" class="error-toast hidden"></div>
+
+    <div id="auth-modal" class="auth-modal hidden">
+        <div class="auth-modal-card">
+            <h3 class="auth-modal-title">Sign In</h3>
+            <p id="auth-modal-subtitle" class="auth-modal-subtitle">Login to continue.</p>
+            <div class="auth-modal-row">
+                <label for="auth-username">Username</label>
+                <input id="auth-username" class="setup-input" type="text" autocomplete="username">
+            </div>
+            <div class="auth-modal-row">
+                <label for="auth-password">Password</label>
+                <input id="auth-password" class="setup-input" type="password" autocomplete="current-password">
+            </div>
+            <div id="auth-status" class="setup-status">Enter credentials.</div>
+            <div class="auth-modal-actions">
+                <button id="auth-cancel-btn" class="map-btn" type="button">Cancel</button>
+                <button id="auth-login-btn" class="btn-refresh" type="button">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="firstrun-overlay" class="firstrun-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="firstrun-title">
+        <div class="firstrun-card">
+            <div class="firstrun-header">
+                <h2 id="firstrun-title" class="firstrun-title">Welcome to Storm Dashboard</h2>
+                <p class="firstrun-subtitle">Complete setup to activate your weather station.</p>
+            </div>
+            <div class="firstrun-body">
+                <div class="setup-grid">
+                    <div class="setup-row"><span class="setup-lbl setup-req">Home Label</span><input id="fr-home-label" class="setup-input" type="text" placeholder="Home"></div>
+                    <div class="setup-row"><span class="setup-lbl setup-req">Latitude</span><input id="fr-home-lat" class="setup-input" type="text" placeholder="36.1539"></div>
+                    <div class="setup-row"><span class="setup-lbl setup-req">Longitude</span><input id="fr-home-lon" class="setup-input" type="text" placeholder="-95.9928"></div>
+                    <div class="setup-row"><span class="setup-lbl">Timezone</span><input id="fr-timezone" class="setup-input" type="text" placeholder="America/Chicago"></div>
+                    <div class="setup-row"><span class="setup-lbl">Work Label</span><input id="fr-work-label" class="setup-input" type="text" placeholder="optional"></div>
+                    <div class="setup-row"><span class="setup-lbl">Work Lat</span><input id="fr-work-lat" class="setup-input" type="text" placeholder="optional"></div>
+                    <div class="setup-row"><span class="setup-lbl">Work Lon</span><input id="fr-work-lon" class="setup-input" type="text" placeholder="optional"></div>
+                    <div class="setup-row"><span class="setup-lbl">Map Provider</span>
+                        <select id="fr-map-provider" class="setup-input">
+                            <option value="esri_street">Esri Street</option>
+                            <option value="osm">OpenStreetMap</option>
+                            <option value="carto_light">CARTO Light</option>
+                            <option value="carto_dark">CARTO Dark</option>
+                        </select>
+                    </div>
+                </div>
+                <details class="firstrun-providers">
+                    <summary class="firstrun-providers-summary">Optional API keys &amp; providers</summary>
+                    <div class="setup-grid firstrun-providers-grid">
+                        <div class="setup-row"><span class="setup-lbl">NWS</span><label class="ctrl-lbl"><input id="fr-nws-enabled" type="checkbox" checked> Enable (keyless default)</label></div>
+                        <div class="setup-row"><span class="setup-lbl">WeatherAPI</span><label class="ctrl-lbl"><input id="fr-weatherapi-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">WeatherAPI Key</span><input id="fr-weatherapi-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Tomorrow.io</span><label class="ctrl-lbl"><input id="fr-tomorrow-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Tomorrow Key</span><input id="fr-tomorrow-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">Visual Crossing</span><label class="ctrl-lbl"><input id="fr-visualcrossing-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Visual Crossing Key</span><input id="fr-visualcrossing-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">OpenWeather</span><label class="ctrl-lbl"><input id="fr-openweather-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">OWM API Key</span><input id="fr-openweather-key" class="setup-input" type="password" placeholder="optional"></div>
+                        <div class="setup-row"><span class="setup-lbl">AviationWeather</span><label class="ctrl-lbl"><input id="fr-aviationweather-enabled" type="checkbox" checked> Enable (keyless)</label></div>
+                        <div class="setup-row"><span class="setup-lbl">NOAA Tides</span><label class="ctrl-lbl"><input id="fr-noaa_tides-enabled" type="checkbox" checked> Enable (keyless)</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Meteomatics</span><label class="ctrl-lbl"><input id="fr-meteomatics-enabled" type="checkbox"> Enable</label></div>
+                        <div class="setup-row"><span class="setup-lbl">Meteomatics Key</span><input id="fr-meteomatics-key" class="setup-input" type="password" placeholder="user:password"></div>
+                    </div>
+                </details>
+            </div>
+            <div id="firstrun-status" class="setup-status">Fill in your location to get started. Fields marked * are required.</div>
+            <div class="firstrun-actions">
+                <button id="firstrun-save-btn" class="btn-refresh firstrun-save-btn" type="button">Save &amp; Launch Dashboard</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

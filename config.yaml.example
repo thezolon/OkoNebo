@@ -1,0 +1,59 @@
+# config.yaml - WeatherApp configuration
+#
+# Copy this file to config.yaml and fill in values for your location.
+# All runtime configuration (provider API keys, locations, preferences)
+# can also be edited through the in-app Setup panel after first start.
+#
+# Sensitive values (API keys) are stored encrypted in secure_settings.db
+# when saved through the UI. Values here are read on startup as fallback
+# defaults when the secure settings store has no override.
+
+# ---------------------------------------------------------------------------
+# Location
+# ---------------------------------------------------------------------------
+lat: 36.1539          # latitude of primary (home) location
+lon: -95.9928         # longitude
+timezone: America/Chicago
+
+# Optional secondary monitoring location (e.g. office/school)
+# work_lat: 36.1540
+# work_lon: -95.9929
+# work_label: Office
+
+# ---------------------------------------------------------------------------
+# App identity
+# ---------------------------------------------------------------------------
+user_agent: "WeatherApp/1.0 (self-hosted; contact@example.com)"
+
+# ---------------------------------------------------------------------------
+# Map display
+# ---------------------------------------------------------------------------
+# Options: esri | osm | carto-light | carto-dark
+map_provider: esri
+
+# ---------------------------------------------------------------------------
+# Authentication (optional)
+# ---------------------------------------------------------------------------
+# Set AUTH_ENABLED=true in .env (or environment) to require login.
+# Credentials are managed through environment variables:
+#   ADMIN_USERNAME / ADMIN_PASSWORD  - admin user (full read/write)
+#   VIEWER_USERNAME / VIEWER_PASSWORD - read-only viewer (optional)
+#
+# See .env.example for the full variable list.
+
+# ---------------------------------------------------------------------------
+# Provider API keys (optional)
+# ---------------------------------------------------------------------------
+# Keys here are overridden by values in secure_settings.db (set via UI).
+# Leave blank or omit to keep a provider disabled.
+#
+# weatherapi_key:    ""    # https://www.weatherapi.com/ (free tier available)
+# tomorrow_key:      ""    # https://www.tomorrow.io/
+# visualcrossing_key: ""   # https://www.visualcrossing.com/
+# openweather_key:   ""    # https://openweathermap.org/ (One Call 3.0)
+# meteomatics_key:   ""    # "username:password" from https://www.meteomatics.com/
+#
+# Keyless providers (always enabled, no key needed):
+#   nws           - NOAA National Weather Service (US only)
+#   aviationweather - aviationweather.gov METAR data (US/international)
+#   noaa_tides    - NOAA CO-OPS tide predictions (US coastal)

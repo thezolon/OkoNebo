@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "release/**"]
+  pull_request:
+    branches: ["main", "release/**"]
+
+jobs:
+  test:
+    name: Lint, Test & Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check (py_compile)
+        run: |
+          python -m py_compile app/main.py app/weather_client.py
+          for f in scripts/*.py; do python -m py_compile "$f"; done
+
+      - name: Unit tests
+        run: python -m pytest tests/test_provider_fallback.py -v --tb=short
+
+      - name: Secret leak scan
+        run: python scripts/security_check.py
+
+  docker:
+    name: Docker Build & Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t weatherapp-ci:${{ github.sha }} .
+
+      - name: Start container
+        run: |
+          docker run -d \
+            --name weatherapp-ci \
+            -p 8000:8000 \
+            -e WEATHERAPP_LAT=36.1539 \
+            -e WEATHERAPP_LON=-95.9928 \
+            weatherapp-ci:${{ github.sha }}
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 10); do
+            if curl -sf http://localhost:8000/api/config > /dev/null; then
+              echo "Health check passed on attempt $i"
+              break
+            fi
+            if [ "$i" -eq 10 ]; then
+              echo "Health check failed after 10 attempts"
+              docker logs weatherapp-ci
+              exit 1
+            fi
+            sleep 3
+          done
+
+      - name: Integration smoke tests
+        env:
+          WEATHERAPP_BASE_URL: "http://localhost:8000"
+        run: |
+          pip install httpx
+          python tests/integration_smoke.py
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f weatherapp-ci || true
