@@ -1866,21 +1866,14 @@ function floorToFiveMinuteUtc(date) {
 }
 
 function buildIemArchiveTimes(frameCount = 24, stepMinutes = 5) {
-    const cacheKey = `iem-archive-frames-${frameCount}-${stepMinutes}`;
-    const cached = getFrameListCache(cacheKey);
-    if (cached) {
-        return cached;
-    }
-
+    // Computed fresh every call from Date.now() — no caching; the "latest" timestamp
+    // advances every 5 minutes so a long-lived cache would produce stale frames.
     const latest = floorToFiveMinuteUtc(new Date(Date.now() - 8 * 60 * 1000));
     const times = [];
     for (let i = frameCount - 1; i >= 0; i -= 1) {
         const t = new Date(latest.getTime() - i * stepMinutes * 60 * 1000);
         times.push(t.toISOString().replace('.000Z', 'Z'));
     }
-    
-    // Cache for 6 hours (since frame IDs don't change, only new frames are added)
-    setFrameListCache(cacheKey, times, 6 * 3600 * 1000);
     return times;
 }
 
@@ -2103,8 +2096,10 @@ async function refreshRadar(forceMetadata = false) {
     }
 
     if (state.radarProvider === 'iem-archive') {
-        if (forceMetadata || iemState.times.length === 0) {
-            iemState.times = buildIemArchiveTimes(24, 5);
+        // Always recompute times — purely derived from Date.now(), no network cost.
+        // Only reset the playhead on forceMetadata (init / provider switch) or if out of bounds.
+        iemState.times = buildIemArchiveTimes(24, 5);
+        if (forceMetadata || currentRFrameIndex >= iemState.times.length) {
             currentRFrameIndex = Math.max(iemState.times.length - 1, 0);
         }
         await updateRadarFrame();
