@@ -1,4 +1,4 @@
-/* Storm dashboard frontend */
+/* OkoNebo frontend */
 
 const state = {
     units: 'f',
@@ -643,7 +643,7 @@ function setStatus(text, type = 'loading') {
     const el = document.getElementById('status-pill');
     if (!el) return;
     if (state.isOffline || state.browserOffline) {
-        // Phase 3: Show sync age when offline
+        // Show most recent successful sync age while offline.
         const syncAge = state.lastSyncTimestamp ? formatAgeShort(state.lastSyncTimestamp) : 'unknown';
         el.textContent = `OFFLINE - Last synced ${syncAge}`;
         el.className = `status-pill offline`;
@@ -939,7 +939,7 @@ function clearError() {
 }
 
 // ============================================================================
-// Phase 3: Persistent State & Offline-First Mode
+// Persistent state and offline behavior
 // ============================================================================
 
 const PERSISTENT_STATE_KEY = 'weatherapp.persistentState';
@@ -1011,7 +1011,7 @@ function restorePersistentState() {
 }
 
 // ============================================================================
-// Phase 4: Cache Cleanup & Lifecycle Management
+// Local cache cleanup and lifecycle management
 // ============================================================================
 
 function getFrameCacheSizeBytes() {
@@ -1074,7 +1074,7 @@ function cleanupExpiredLocalStorage() {
 }
 
 // ============================================================================
-// Phase 5: Input Validation & Safe Rendering
+// Input validation and safe rendering
 // ============================================================================
 
 function validateResponse(data, schema) {
@@ -1101,7 +1101,7 @@ function safeRender(renderFn, section = 'unknown') {
 }
 
 // ============================================================================
-// Phase 6: Monitoring & Observability
+// Runtime metrics and observability
 // ============================================================================
 
 const metrics = {
@@ -1280,17 +1280,17 @@ async function fetchAPIDeduped(endpoint) {
         return _inflightRequests.get(endpoint);
     }
 
-    // Create the request promise with timing (Phase 6)
+    // Build request promise and capture timing for diagnostics.
     const startTime = Date.now();
     logMetric('cache_misses');
     
     const promise = fetchAPI(endpoint)
         .then(data => {
             _lastSuccessfulFetch = Date.now();
-            state.isOffline = false;  // Mark as online
-            state.lastSyncTimestamp = Date.now();  // Phase 3: Track sync
+            state.isOffline = false;
+            state.lastSyncTimestamp = Date.now();
             
-            // Phase 6: Log API timing
+            // Track API latency for debug panel visibility.
             const durationMs = Date.now() - startTime;
             logAPICall(endpoint, durationMs, 200);
             if (durationMs > 5000) {
@@ -1299,7 +1299,7 @@ async function fetchAPIDeduped(endpoint) {
             return data;
         })
         .catch(err => {
-            // Phase 6: Log error
+            // Track request failure for diagnostics.
             const durationMs = Date.now() - startTime;
             logAPICall(endpoint, durationMs, 500);
             logMetric('api_error', 1, { endpoint, error: err.message });
@@ -1884,12 +1884,12 @@ function getFrameListCache(key) {
         if (!cached) return null;
         
         const { data, expires } = JSON.parse(cached);
-        FRAME_CACHE_KEYS.add(cacheKey);  // Phase 4: Track for cleanup
+        FRAME_CACHE_KEYS.add(cacheKey);
         
         const now = Date.now();
         const offlineGraceMs = state.offlineExtendedCacheTtlSec * 1000;
         if (now < expires || ((state.isOffline || state.browserOffline) && now < expires + offlineGraceMs)) {
-            logMetric('cache_hits');  // Phase 6: Log cache hit
+            logMetric('cache_hits');
             if (now >= expires) logMetric('offline_cache_extension');
             return data;
         }
@@ -1907,9 +1907,9 @@ function setFrameListCache(key, frames, ttlMs) {
         const expires = Date.now() + ttlMs;
         const cacheKey = `frames:${key}`;
         window.localStorage.setItem(cacheKey, JSON.stringify({ data: frames, expires }));
-        FRAME_CACHE_KEYS.add(cacheKey);  // Phase 4: Track for cleanup
+        FRAME_CACHE_KEYS.add(cacheKey);
         
-        // Phase 4: Check and cleanup if needed
+        // Keep browser storage bounded over long-running sessions.
         if (getFrameCacheSizeBytes() > FRAME_CACHE_MAX_BYTES) {
             cleanupFrameCache();
         }
@@ -2192,7 +2192,7 @@ async function loadStormMode(forceFetch = false) {
         setStatus('Storm mode live', 'ok');
         pushTimelineEvent('refresh', 'Storm mode refresh', 'Critical feeds refreshed successfully');
         
-        // Phase 3: Save successful storm refresh to persistent state
+        // Persist latest good data for offline recovery.
         persistRuntimeCache();
     } else {
         showError(`Storm mode partial failure: ${failures.join(', ')}`);
@@ -2200,10 +2200,10 @@ async function loadStormMode(forceFetch = false) {
         pushTimelineEvent('refresh', 'Storm mode partial', `Issues: ${failures.join(', ')}`);
     }
 
-    // Phase 3: Update offline UI after storm mode refresh
+    // Keep status controls in sync with online/offline state.
     updateOfflineUI();
     
-    // Phase 6: Log storm mode metrics
+    // Track refresh success/failure rates.
     logMetric('storm_mode_refresh', 1, { failures: failures.length, success: failures.length === 0 });
 
     reportDebugSnapshot('storm-refresh');
@@ -2240,7 +2240,7 @@ function configureAutoRefresh() {
 }
 
 function updateOfflineUI() {
-    // Phase 3: Disable refresh when offline, enable when back online
+    // Disable manual refresh controls while offline.
     const refreshBtn = document.getElementById('refresh-btn');
     const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
     const stormModeToggle = document.getElementById('storm-mode-toggle');
@@ -2635,7 +2635,7 @@ function setupControls() {
 
     document.getElementById('refresh-btn').addEventListener('click', async () => {
         if (state.isOffline || state.browserOffline) {
-            // Phase 3: Warn user when trying to refresh offline
+            // Avoid noisy retries when network is unavailable.
             showError('Cannot refresh: offline. Check your internet connection.');
             return;
         }
@@ -2856,7 +2856,7 @@ async function loadAll(forceFetch = false) {
         setStatus(owmUsable ? 'Live' : 'Live (NWS/PWS)', owmUsable ? 'ok' : 'loading');
         pushTimelineEvent('refresh', forceFetch ? 'Full refresh' : 'Initial load', owmUsable ? 'All feeds updated' : 'Primary feeds updated');
         
-        // Phase 3: Save successful refresh to persistent state
+        // Persist latest good data for offline recovery.
         persistRuntimeCache();
     } else {
         showError(`Some sections failed: ${failures.join(', ')}`);
@@ -2864,10 +2864,10 @@ async function loadAll(forceFetch = false) {
         pushTimelineEvent('refresh', 'Partial refresh', `Issues: ${failures.join(', ')}`);
     }
 
-    // Phase 3: Update offline UI after refresh attempt
+    // Keep status controls in sync with online/offline state.
     updateOfflineUI();
     
-    // Phase 6: Log refresh metrics
+    // Track refresh success/failure rates.
     logMetric('refresh_cycle', 1, { failures: failures.length, success: failures.length === 0 });
 
     reportDebugSnapshot(forceFetch ? 'full-refresh' : 'initial-load');

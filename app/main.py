@@ -117,7 +117,7 @@ def _provider_api_key(pid: str) -> str:
 _settings_seed = (
     os.getenv("SETTINGS_ENCRYPTION_KEY")
     or str((_cfg.get("auth", {}) or {}).get("token_secret") or "")
-    or str(_cfg.get("user_agent") or "weatherapp-local")
+    or str(_cfg.get("user_agent") or "okonebo-local")
 )
 SECURE_STORE = SecureSettingsStore(_CONFIG_PATH.parent / "secure_settings.db", key_seed=_settings_seed)
 
@@ -166,7 +166,7 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     AUTH_TOKEN_SECRET = str(
         os.getenv("AUTH_TOKEN_SECRET")
         or auth_cfg.get("token_secret")
-        or "dev-weatherapp-secret"
+        or "dev-okonebo-secret"
     )
 
     provider_cfg = _default_provider_config()
