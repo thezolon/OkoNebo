@@ -10,6 +10,7 @@ Serves:
 
 from pathlib import Path
 from collections import defaultdict, deque
+from datetime import datetime
 import asyncio
 import base64
 import contextvars
@@ -22,7 +23,7 @@ import re
 import secrets
 import time
 from typing import Any, Awaitable, Callable
-from zoneinfo import available_timezones
+from zoneinfo import ZoneInfo, available_timezones
 
 import yaml
 from fastapi import Body, FastAPI, HTTPException, Query, Request
@@ -31,6 +32,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app import weather_client as wc
+from app.astro import compute_astro
 from app.secure_settings import SecureSettingsStore
 
 try:
@@ -421,6 +423,8 @@ _LOGIN_ATTEMPT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 _TOKEN_DENYLIST: dict[str, float] = {}  # token_key -> exp epoch
 _TOKEN_DENYLIST_STORE_KEY = "auth.revoked_user_token_exp"
 _TOKEN_DENYLIST_LOADED = False
+_ASTRO_CACHE: dict[str, Any] = {"expires_at": 0, "key": None, "payload": None}
+_ASTRO_CACHE_TTL_SECONDS = 21600
 
 # ---------------------------------------------------------------------------
 # App
@@ -1472,6 +1476,29 @@ async def api_metar():
         return result
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/astro",
+    summary="Astronomical data",
+    description=(
+        "Computes sunrise, sunset, solar noon, golden-hour bounds, and moon phase "
+        "for the configured location. Cached 6 hours."
+    ),
+    tags=["Weather"],
+)
+async def api_astro():
+    now = int(time.time())
+    local_day = datetime.now(ZoneInfo(TIMEZONE)).date()
+    cache_key = f"{LAT:.4f}:{LON:.4f}:{TIMEZONE}:{local_day}"
+    if _ASTRO_CACHE.get("payload") and _ASTRO_CACHE.get("expires_at", 0) > now and _ASTRO_CACHE.get("key") == cache_key:
+        return _ASTRO_CACHE["payload"]
+
+    payload = compute_astro(LAT, LON, TIMEZONE)
+    _ASTRO_CACHE["payload"] = payload
+    _ASTRO_CACHE["key"] = cache_key
+    _ASTRO_CACHE["expires_at"] = now + _ASTRO_CACHE_TTL_SECONDS
+    return payload
 
 
 @app.get(

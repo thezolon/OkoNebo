@@ -48,6 +48,7 @@ const cache = {
     owm: null,
     pws: null,
     pwsTrend: null,
+    astro: null,
     currentSources: [],
 };
 
@@ -101,6 +102,15 @@ let currentRFrameIndex = 0;
 
 let timerFullRefresh = null;
 let timerAgeRefresh = null;
+
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {
+            // Ignore service worker registration failures in unsupported contexts.
+        });
+    });
+}
 
 const runtime = {
     timelineEvents: [],
@@ -1950,6 +1960,25 @@ async function renderAlerts(forceFetch = false) {
     renderTimeline();
 }
 
+async function renderAstro(forceFetch = false) {
+    if (forceFetch || !cache.astro) cache.astro = await fetchAPIDeduped('/astro');
+    const astro = cache.astro || {};
+
+    const formatAstro = (value) => (value ? formatHM(value) : '--');
+
+    document.getElementById('astro-day').textContent = astro.day || '';
+    document.getElementById('astro-sunrise').textContent = formatAstro(astro.sunrise);
+    document.getElementById('astro-sunset').textContent = formatAstro(astro.sunset);
+    document.getElementById('astro-solar-noon').textContent = formatAstro(astro.solar_noon);
+
+    const goldenStart = formatAstro(astro.golden_hour_start);
+    const goldenEnd = formatAstro(astro.golden_hour_end);
+    document.getElementById('astro-golden').textContent = `${goldenStart} - ${goldenEnd}`;
+
+    document.getElementById('astro-moon-phase').textContent = astro.moon_phase || '--';
+    document.getElementById('astro-moon-illum').textContent = astro.moon_illumination != null ? `${astro.moon_illumination}%` : '--';
+}
+
 async function renderPws(forceFetch = false) {
     if (forceFetch || !cache.pws) cache.pws = await fetchAPIDeduped('/pws');
     if (forceFetch || !cache.pwsTrend) cache.pwsTrend = await fetchAPIDeduped(`/pws/trend?hours=${state.pwsTrendHours}`);
@@ -3297,10 +3326,11 @@ async function loadAll(forceFetch = false) {
         renderHourly(forceFetch),
         renderAlerts(forceFetch),
         renderPws(forceFetch),
+        renderAstro(forceFetch),
         initRadar(),
     ];
 
-    const sectionNames = ['header', 'current', 'forecast', 'hourly', 'alerts', 'pws', 'radar'];
+    const sectionNames = ['header', 'current', 'forecast', 'hourly', 'alerts', 'pws', 'astro', 'radar'];
     const nwsResults = await Promise.allSettled(tasks);
 
     try {
@@ -3367,6 +3397,7 @@ async function loadAll(forceFetch = false) {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    registerServiceWorker();
     runtime.authToken = getStoredAuthToken();
 
     // Phase 3: Restore persistent state from localStorage

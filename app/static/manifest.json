@@ -1,0 +1,24 @@
+{
+  "name": "OkoNebo Weather Dashboard",
+  "short_name": "OkoNebo",
+  "description": "Self-hosted weather dashboard with multi-provider fallback and severe-weather observability.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#0b1726",
+  "icons": [
+    {
+      "src": "/okonebo-icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/okonebo-icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

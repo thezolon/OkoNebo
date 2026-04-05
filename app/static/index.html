@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OkoNebo - Weather Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="okonebo-icon.svg">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0b1726">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="OkoNebo">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -191,6 +197,21 @@
         </main>
 
         <aside class="right-panel">
+            <section class="panel-sec" id="astro-section">
+                <div class="panel-sec-hdr">
+                    <h3>Astronomy</h3>
+                    <span id="astro-day" class="badge"></span>
+                </div>
+                <div class="debug-grid" style="margin-top: 8px;">
+                    <div class="debug-row"><span class="debug-lbl">Sunrise</span><span id="astro-sunrise" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Sunset</span><span id="astro-sunset" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Solar Noon</span><span id="astro-solar-noon" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Golden Hour</span><span id="astro-golden" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Moon Phase</span><span id="astro-moon-phase" class="debug-val">--</span></div>
+                    <div class="debug-row"><span class="debug-lbl">Moon Illumination</span><span id="astro-moon-illum" class="debug-val">--</span></div>
+                </div>
+            </section>
+
             <section class="panel-sec" id="forecast-section">
                 <div class="panel-sec-hdr">
                     <h3>7-Day Forecast</h3>

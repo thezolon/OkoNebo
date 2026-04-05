@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="OkoNebo icon 512">
+  <defs>
+    <linearGradient id="okbBg512" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a" />
+      <stop offset="1" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="okbSun512" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde68a" />
+      <stop offset="1" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#okbBg512)" />
+  <circle cx="170" cy="178" r="82" fill="url(#okbSun512)" opacity="0.96" />
+  <g fill="#ffffff" opacity="0.96">
+    <ellipse cx="308" cy="308" rx="122" ry="74" />
+    <ellipse cx="224" cy="318" rx="74" ry="54" />
+  </g>
+  <path d="M150 386c48 30 166 30 214 0" fill="none" stroke="#dbeafe" stroke-width="22" stroke-linecap="round" />
+</svg>

@@ -81,12 +81,20 @@ def main() -> int:
         nws = providers.get("nws", {}) if isinstance(providers.get("nws", {}), dict) else {}
         ensure("capabilities" in nws, "provider metadata must include capabilities")
 
+    def check_astro() -> None:
+        status, payload = fetch_json("/api/astro")
+        ensure(status == 200, "astro status must be 200")
+        ensure(isinstance(payload, dict), "astro payload must be object")
+        ensure("sunrise" in payload and "sunset" in payload, "astro must include sunrise/sunset")
+        ensure("moon_phase" in payload and "moon_illumination" in payload, "astro must include moon fields")
+
     checks.extend([
         ("/api/config", check_config),
         ("/api/current", check_current),
         ("/api/forecast", check_forecast),
         ("/api/hourly", check_hourly),
         ("/api/bootstrap", check_bootstrap),
+        ("/api/astro", check_astro),
     ])
 
     for name, fn in checks:
