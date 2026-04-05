@@ -2,6 +2,7 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
+import os
 
 from fastapi.testclient import TestClient
 
@@ -34,6 +35,9 @@ class SetupAuthIntegrationTests(unittest.TestCase):
             "FIRST_RUN_COMPLETE": main.FIRST_RUN_COMPLETE,
             "_TOKEN_DENYLIST": copy.deepcopy(main._TOKEN_DENYLIST),
             "_LOGIN_ATTEMPT_BUCKETS": copy.deepcopy(main._LOGIN_ATTEMPT_BUCKETS),
+            # Capture env var state so _apply_config doesn't pick up production .env
+            "_env_AUTH_ENABLED": os.environ.pop("AUTH_ENABLED", None),
+            "_env_AUTH_REQUIRE_VIEWER_LOGIN": os.environ.pop("AUTH_REQUIRE_VIEWER_LOGIN", None),
         }
 
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -49,6 +53,8 @@ class SetupAuthIntegrationTests(unittest.TestCase):
 
         main._CONFIG_PATH = self._cfg_path
         main.SECURE_STORE = _FakeStore()
+        main.AUTH_ENABLED = False
+        main.AUTH_REQUIRE_VIEWER_LOGIN = False
         main._TOKEN_DENYLIST.clear()
         main._LOGIN_ATTEMPT_BUCKETS.clear()
 
@@ -66,6 +72,12 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         main._TOKEN_DENYLIST.update(self._orig["_TOKEN_DENYLIST"])
         main._LOGIN_ATTEMPT_BUCKETS.clear()
         main._LOGIN_ATTEMPT_BUCKETS.update(self._orig["_LOGIN_ATTEMPT_BUCKETS"])
+        # Restore env vars removed in setUp
+        for key, env_key in [("_env_AUTH_ENABLED", "AUTH_ENABLED"), ("_env_AUTH_REQUIRE_VIEWER_LOGIN", "AUTH_REQUIRE_VIEWER_LOGIN")]:
+            if self._orig[key] is not None:
+                os.environ[env_key] = self._orig[key]
+            else:
+                os.environ.pop(env_key, None)
         self._tmpdir.cleanup()
 
     def test_bootstrap_first_run_flips_false_after_settings_save(self):

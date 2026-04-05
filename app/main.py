@@ -1737,6 +1737,9 @@ async def api_settings_get():
             "require_viewer_login": AUTH_REQUIRE_VIEWER_LOGIN,
             "admin_user": next((u.get("username") for u in AUTH_USERS if u.get("role") == "admin"), "admin"),
             "viewer_user": next((u.get("username") for u in AUTH_USERS if u.get("role") == "viewer"), "viewer"),
+            # Warn when .env is overriding the UI setting so users aren't confused
+            "env_override": os.getenv("AUTH_ENABLED") is not None,
+            "env_override_value": os.getenv("AUTH_ENABLED"),
         },
         "cache": {
             "provider_ttl_seconds": PROVIDER_PULL_CYCLES,

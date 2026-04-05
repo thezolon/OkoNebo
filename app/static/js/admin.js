@@ -409,6 +409,16 @@ function fillSettings(settings) {
     });
 
     document.getElementById('setup-auth-enabled').checked = !!settings?.auth?.enabled;
+    const authEnvOverride = settings?.auth?.env_override;
+    const authEnvNote = document.getElementById('auth-env-override-note');
+    if (authEnvNote) {
+        if (authEnvOverride) {
+            authEnvNote.textContent = `⚠ AUTH_ENABLED=${settings.auth.env_override_value} in .env is overriding this setting. Edit .env to change auth state.`;
+            authEnvNote.style.display = 'block';
+        } else {
+            authEnvNote.style.display = 'none';
+        }
+    }
     document.getElementById('setup-auth-viewer-required').checked = !!settings?.auth?.require_viewer_login;
     document.getElementById('setup-auth-admin-user').value = settings?.auth?.admin_user || 'admin';
     document.getElementById('setup-auth-viewer-user').value = settings?.auth?.viewer_user || 'viewer';
