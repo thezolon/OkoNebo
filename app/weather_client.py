@@ -1596,6 +1596,22 @@ async def _pws_get_one(station_id: str, api_key: str) -> dict:
     raise RuntimeError("PWS request failed unexpectedly")
 
 
+def _pws_icon(icon_code: Any) -> str | None:
+    """
+    Map Weather.com PWS icon code to icon URL.
+    Icon codes: https://twcapi.co/TWCICON
+    """
+    if not icon_code:
+        return None
+    try:
+        code = int(icon_code)
+        # Weather.com icon format: numeric code to icon URL
+        # Using da (day) at night fallback from their standard icon set
+        return f"https://m.tbcdn.cn/weather/icons/46/{code:02d}.svg"
+    except (ValueError, TypeError):
+        return None
+
+
 def _norm_pws_observation(station_id: str, raw: dict) -> dict:
     """Normalize Weather.com PWS response for frontend consumption."""
     observations = raw.get("observations", [])
@@ -1621,6 +1637,8 @@ def _norm_pws_observation(station_id: str, raw: dict) -> dict:
         "humidity": obs.get("humidity"),
         "uv": obs.get("uv"),
         "solar_radiation": obs.get("solarRadiation"),
+        "weather_desc": obs.get("wxPhraseShort") or obs.get("wxPhrase"),
+        "icon": _pws_icon(obs.get("iconCode")),
     }
 
 
