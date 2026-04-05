@@ -19,3 +19,7 @@ release-*-checksums.sha256
 
 # local-only agent handoff/checklists
 AI_AGENT_TODO.local.md
+.serena/
+AI_AGENT_API_RELIABILITY.md
+AI_AGENT_CODE_REVIEW.md
+AI_AGENT_FEATURES.md
