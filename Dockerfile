@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy app code
 COPY app/ app/
+COPY scripts/ scripts/
 # Use example config as image default; docker-compose bind mount can override.
 COPY config.yaml.example ./config.yaml
 

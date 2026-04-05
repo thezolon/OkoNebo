@@ -220,6 +220,18 @@ Expected: `SECRET LEAK CHECK: OK`
 docker compose up -d --build
 ```
 
+### Recover admin access (Docker)
+
+If auth is enabled and admin credentials are lost, reset them without wiping app state:
+
+```bash
+docker exec weather-app python /app/scripts/reset_admin.py \
+	--username admin \
+	--password 'change-me-now-strong'
+```
+
+Then log in via `/admin.html` and rotate credentials immediately.
+
 ### Backup runtime state
 
 ```bash

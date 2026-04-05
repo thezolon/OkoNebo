@@ -338,7 +338,11 @@ def _apply_config(cfg: dict[str, Any]) -> None:
         "AUTH_REQUIRE_VIEWER_LOGIN",
         bool(auth_cfg.get("require_viewer_login", False)),
     )
-    AUTH_USERS = list(SECURE_STORE.get_json("auth.users", auth_cfg.get("users", [])) or [])
+    stored_auth_users = SECURE_STORE.get_json("auth.users", None)
+    sqlite_has_auth_users = isinstance(stored_auth_users, list) and len(stored_auth_users) > 0
+    AUTH_USERS = list(
+        stored_auth_users if sqlite_has_auth_users else (auth_cfg.get("users", []) or [])
+    )
 
     env_admin_username = str(os.getenv("ADMIN_USERNAME") or "").strip()
     env_admin_password = str(os.getenv("ADMIN_PASSWORD") or "").strip()
@@ -361,8 +365,11 @@ def _apply_config(cfg: dict[str, Any]) -> None:
         match["password_hash"] = _hash_password(password)
         match.pop("password", None)
 
-    _upsert_env_user("admin", env_admin_username, env_admin_password)
-    _upsert_env_user("viewer", env_viewer_username, env_viewer_password)
+    # Env credentials are bootstrap-only: if SQLite already has auth users,
+    # ignore env username/password and trust persisted identities.
+    if not sqlite_has_auth_users:
+        _upsert_env_user("admin", env_admin_username, env_admin_password)
+        _upsert_env_user("viewer", env_viewer_username, env_viewer_password)
 
     AUTH_TOKEN_SECRET = str(
         os.getenv("AUTH_TOKEN_SECRET")

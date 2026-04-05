@@ -218,6 +218,18 @@ bash scripts/reset.sh --config     # wipe everything
 .\reset.ps1 -Config      # wipe everything
 ```
 
+## Admin credential recovery (without factory reset)
+
+If auth is enabled and admin credentials are lost, reset them directly in the running container:
+
+```bash
+docker exec weather-app python /app/scripts/reset_admin.py \
+	--username admin \
+	--password 'change-me-now-strong'
+```
+
+This updates `auth.users` in `secure_settings.db` and keeps all other runtime settings intact.
+
 ---
 
 ## Upgrading

@@ -205,6 +205,39 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         self.assertEqual(bootstrap.status_code, 200)
         self.assertFalse(bootstrap.json().get("first_run_required"))
 
+    def test_env_credentials_ignored_when_sqlite_users_exist(self):
+        os.environ["AUTH_ENABLED"] = "true"
+        os.environ["ADMIN_USERNAME"] = "env-admin"
+        os.environ["ADMIN_PASSWORD"] = "env-password-123"
+        try:
+            main.SECURE_STORE.set_json(
+                "auth.users",
+                [{
+                    "username": "db-admin",
+                    "role": "admin",
+                    "password_hash": main._hash_password("db-password-123"),
+                }],
+            )
+
+            cfg = main._load_config_file()
+            main._apply_config(cfg)
+
+            login_env = self.client.post(
+                "/api/auth/login",
+                json={"username": "env-admin", "password": "env-password-123"},
+            )
+            self.assertEqual(login_env.status_code, 401)
+
+            login_db = self.client.post(
+                "/api/auth/login",
+                json={"username": "db-admin", "password": "db-password-123"},
+            )
+            self.assertEqual(login_db.status_code, 200, login_db.text)
+        finally:
+            os.environ.pop("ADMIN_USERNAME", None)
+            os.environ.pop("ADMIN_PASSWORD", None)
+            os.environ.pop("AUTH_ENABLED", None)
+
     def test_settings_rejects_invalid_timezone(self):
         main.AUTH_ENABLED = False
         resp = self.client.post(
