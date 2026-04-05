@@ -70,6 +70,13 @@ def main() -> int:
         ensure(isinstance(payload.get("points"), list), "history must include points array")
         ensure(int(payload.get("hours") or 0) == 6, "history must echo bounded hours")
 
+    def check_push_config() -> None:
+        status, payload = fetch_json("/api/push/config")
+        ensure(status == 200, f"push config status must be 200, got {status}")
+        ensure(isinstance(payload, dict), "push config payload must be object")
+        ensure("vapid_public_key" in payload, "push config must include VAPID public key")
+        ensure("subscription_count" in payload, "push config must include subscription count")
+
     def check_forecast() -> None:
         status, payload = fetch_json("/api/forecast")
         ensure(status in (200, 502), f"forecast status must be 200 or 502, got {status}")
@@ -135,6 +142,7 @@ def main() -> int:
         ("/api/current", check_current),
         ("/api/current/multi", check_current_multi),
         ("/api/history", check_history),
+        ("/api/push/config", check_push_config),
         ("/api/forecast", check_forecast),
         ("/api/hourly", check_hourly),
         ("/api/bootstrap", check_bootstrap),

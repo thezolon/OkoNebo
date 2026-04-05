@@ -25,11 +25,15 @@ import time
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo, available_timezones
 
+import httpx
 import yaml
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pywebpush import WebPushException, webpush
 
 from app import weather_client as wc
 from app.astro import compute_astro
@@ -442,6 +446,10 @@ _ASTRO_CACHE_TTL_SECONDS = 21600
 _LAST_THREAT_LEVEL: str = "default"
 _WEBHOOK_DELIVERY_STATS: dict[str, int] = {"sent": 0, "failed": 0}
 _WEBHOOK_STORE_KEY = "webhooks.config"
+_PUSH_SUBSCRIPTIONS_STORE_KEY = "push.subscriptions"
+_PUSH_VAPID_PUBLIC_STORE_KEY = "push.vapid.public"
+_PUSH_VAPID_PRIVATE_STORE_KEY = "push.vapid.private"
+_PUSH_DELIVERY_STATS: dict[str, int] = {"sent": 0, "failed": 0}
 
 # ---------------------------------------------------------------------------
 # App
@@ -1059,6 +1067,104 @@ def _save_webhooks(webhooks: list[dict[str, Any]]) -> None:
     SECURE_STORE.set_json(_WEBHOOK_STORE_KEY, webhooks)
 
 
+def _load_push_subscriptions() -> list[dict[str, Any]]:
+    records = SECURE_STORE.get_json(_PUSH_SUBSCRIPTIONS_STORE_KEY, []) or []
+    if not isinstance(records, list):
+        return []
+    return [item for item in records if isinstance(item, dict) and str(item.get("endpoint") or "").strip()]
+
+
+def _save_push_subscriptions(subscriptions: list[dict[str, Any]]) -> None:
+    SECURE_STORE.set_json(_PUSH_SUBSCRIPTIONS_STORE_KEY, subscriptions)
+
+
+def _b64url_encode_bytes(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _generate_vapid_keypair() -> tuple[str, str]:
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_value = private_key.private_numbers().private_value.to_bytes(32, "big")
+    public_bytes = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+    return _b64url_encode_bytes(public_bytes), _b64url_encode_bytes(private_value)
+
+
+def _get_or_create_push_vapid_keys() -> tuple[str, str]:
+    public_key = str(SECURE_STORE.get_json(_PUSH_VAPID_PUBLIC_STORE_KEY, "") or "")
+    private_key = str(SECURE_STORE.get_json(_PUSH_VAPID_PRIVATE_STORE_KEY, "") or "")
+    if public_key and private_key:
+        return public_key, private_key
+
+    public_key, private_key = _generate_vapid_keypair()
+    SECURE_STORE.set_json(_PUSH_VAPID_PUBLIC_STORE_KEY, public_key)
+    SECURE_STORE.set_json(_PUSH_VAPID_PRIVATE_STORE_KEY, private_key)
+    return public_key, private_key
+
+
+def _push_vapid_subject() -> str:
+    raw = str(os.getenv("PUSH_VAPID_SUBJECT") or "mailto:okonebo@localhost")
+    return raw.strip() or "mailto:okonebo@localhost"
+
+
+def _sanitize_push_subscription(payload: dict[str, Any]) -> dict[str, Any]:
+    endpoint = str(payload.get("endpoint") or "").strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="subscription endpoint is required")
+
+    raw_keys = payload.get("keys")
+    keys: dict[str, Any] = raw_keys if isinstance(raw_keys, dict) else {}
+    p256dh = str(keys.get("p256dh") or "").strip()
+    auth = str(keys.get("auth") or "").strip()
+    if not p256dh or not auth:
+        raise HTTPException(status_code=400, detail="subscription keys are required")
+
+    return {
+        "endpoint": endpoint,
+        "keys": {"p256dh": p256dh, "auth": auth},
+    }
+
+
+async def _send_push_notification(subscription: dict[str, Any], payload: dict[str, Any]) -> bool:
+    _, private_key = _get_or_create_push_vapid_keys()
+    try:
+        webpush(
+            subscription_info=subscription,
+            data=json.dumps(payload, separators=(",", ":")),
+            vapid_private_key=private_key,
+            vapid_claims={"sub": _push_vapid_subject()},
+        )
+        _PUSH_DELIVERY_STATS["sent"] += 1
+        return True
+    except WebPushException as exc:
+        _PUSH_DELIVERY_STATS["failed"] += 1
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code in {404, 410}:
+            return False
+        raise
+
+
+async def _send_push_notifications(payload: dict[str, Any]) -> None:
+    subscriptions = _load_push_subscriptions()
+    if not subscriptions:
+        return
+
+    active: list[dict[str, Any]] = []
+    for subscription in subscriptions:
+        try:
+            keep = await _send_push_notification(subscription, payload)
+            if keep:
+                active.append(subscription)
+        except Exception as exc:
+            LOGGER.warning(f"Push delivery error for {subscription.get('endpoint', '')}: {exc}")
+            active.append(subscription)
+
+    if len(active) != len(subscriptions):
+        _save_push_subscriptions(active)
+
+
 async def _fire_webhook(url: str, payload: dict[str, Any]) -> None:
     """POST webhook payload with timeout and no retries (best-effort)."""
     _WEBHOOK_DELIVERY_STATS["sent"] += 1
@@ -1085,14 +1191,15 @@ async def _check_threat_transition_and_fire_webhooks(current_alerts: list[dict])
     # Check if transition occurred
     if current_threat == _LAST_THREAT_LEVEL:
         return
-    
+
+    previous_threat = _LAST_THREAT_LEVEL
     _LAST_THREAT_LEVEL = current_threat
     webhooks = _load_webhooks()
     
     # Fire webhooks with transition info
     payload = {
         "event": "threat_level_transition",
-        "previous_level": _LAST_THREAT_LEVEL,
+        "previous_level": previous_threat,
         "current_level": current_threat,
         "timestamp": int(time.time()),
         "location": {
@@ -1102,7 +1209,27 @@ async def _check_threat_transition_and_fire_webhooks(current_alerts: list[dict])
             "timezone": TIMEZONE,
         },
         "alert_count": len(current_alerts),
+        "alerts": [
+            {
+                "event": alert.get("event") or alert.get("headline") or "Alert",
+                "severity": alert.get("severity"),
+                "status": alert.get("status"),
+                "expires": alert.get("expires"),
+            }
+            for alert in current_alerts[:3]
+        ],
     }
+
+    if current_threat in {"approaching", "active"}:
+        top_alert = current_alerts[0] if current_alerts else {}
+        push_payload = {
+            "title": f"OkoNebo: {current_threat.title()} threat",
+            "body": str(top_alert.get("event") or top_alert.get("headline") or f"{len(current_alerts)} alert(s) detected"),
+            "tag": f"okonebo-threat-{current_threat}",
+            "url": "/",
+            "data": payload,
+        }
+        await _send_push_notifications(push_payload)
     
     for webhook in webhooks:
         if webhook.get("enabled"):
@@ -1333,6 +1460,67 @@ async def api_webhooks_delete(request: Request, webhook_id: str):
     _log_event("webhook.deleted", request, webhook_id=webhook_id)
     
     return {"status": "deleted", "webhook_id": webhook_id}
+
+
+@app.get(
+    "/api/push/config",
+    summary="Browser push configuration",
+    description="Returns Web Push availability, VAPID public key, and stored subscription count.",
+    tags=["Integrations"],
+)
+async def api_push_config():
+    public_key, _ = _get_or_create_push_vapid_keys()
+    subscriptions = _load_push_subscriptions()
+    return {
+        "supported": True,
+        "vapid_public_key": public_key,
+        "subscription_count": len(subscriptions),
+        "configured": bool(public_key),
+    }
+
+
+@app.post(
+    "/api/push/subscribe",
+    summary="Subscribe browser for severe-alert push notifications",
+    description="Stores a browser push subscription in the encrypted settings store.",
+    tags=["Integrations"],
+)
+async def api_push_subscribe(payload: dict[str, Any] = Body(...)):
+    subscription = _sanitize_push_subscription(payload)
+    subscriptions = _load_push_subscriptions()
+    endpoint = subscription["endpoint"]
+    now = int(time.time())
+    updated = False
+
+    for item in subscriptions:
+        if str(item.get("endpoint") or "") == endpoint:
+            item.update(subscription)
+            item["updated_at"] = now
+            updated = True
+            break
+
+    if not updated:
+        subscriptions.append({**subscription, "created_at": now, "updated_at": now})
+
+    _save_push_subscriptions(subscriptions)
+    return {"ok": True, "subscription_count": len(subscriptions)}
+
+
+@app.delete(
+    "/api/push/subscribe",
+    summary="Unsubscribe browser from severe-alert push notifications",
+    description="Removes a stored browser push subscription by endpoint.",
+    tags=["Integrations"],
+)
+async def api_push_unsubscribe(payload: dict[str, Any] = Body(...)):
+    endpoint = str(payload.get("endpoint") or "").strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="subscription endpoint is required")
+
+    subscriptions = _load_push_subscriptions()
+    updated = [item for item in subscriptions if str(item.get("endpoint") or "") != endpoint]
+    _save_push_subscriptions(updated)
+    return {"ok": True, "subscription_count": len(updated)}
 
 
 def _require_admin_identity(request: Request) -> dict[str, Any]:

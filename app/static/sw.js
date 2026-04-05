@@ -1,4 +1,4 @@
-const CACHE_NAME = 'okonebo-static-v3';
+const CACHE_NAME = 'okonebo-static-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -57,6 +57,45 @@ self.addEventListener('fetch', (event) => {
         .catch(() => cached);
 
       return cached || fetchPromise;
+    })
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (_) {
+    payload = {};
+  }
+
+  const title = payload.title || 'OkoNebo Alert';
+  const options = {
+    body: payload.body || 'A severe weather alert transition was detected.',
+    icon: '/okonebo-icon-192.svg',
+    badge: '/okonebo-icon-192.svg',
+    tag: payload.tag || 'okonebo-alert',
+    data: payload.data || { url: '/' },
+    requireInteraction: true,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(targetUrl) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+      return undefined;
     })
   );
 });

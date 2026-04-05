@@ -108,7 +108,7 @@ let timerAgeRefresh = null;
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=3').catch(() => {
+        navigator.serviceWorker.register('/sw.js?v=4').catch(() => {
             // Ignore service worker registration failures in unsupported contexts.
         });
     });
@@ -132,7 +132,112 @@ const runtime = {
     lastIconFailedAt: null,
     lastCurrentSourceKey: '',
     lastCurrentSourceLabel: '',
+    pushConfig: null,
 };
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let index = 0; index < rawData.length; index += 1) {
+        outputArray[index] = rawData.charCodeAt(index);
+    }
+    return outputArray;
+}
+
+async function pushApiRequest(path, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (runtime.authToken) headers.Authorization = `Bearer ${runtime.authToken}`;
+    if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    const resp = await fetch(path, { ...options, headers });
+    if (!resp.ok) throw new Error(`${path} failed: ${resp.status}`);
+    return await resp.json();
+}
+
+async function renderPushControls(forceFetch = false) {
+    const status = document.getElementById('push-status');
+    const btn = document.getElementById('push-toggle-btn');
+    if (!status || !btn) return;
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        btn.disabled = true;
+        status.textContent = 'Push notifications unsupported in this browser.';
+        return;
+    }
+
+    try {
+        if (forceFetch || !runtime.pushConfig) runtime.pushConfig = await pushApiRequest('/api/push/config');
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        const permission = Notification.permission;
+
+        if (subscription) {
+            btn.textContent = 'Disable Severe Alert Push';
+            btn.disabled = false;
+            status.textContent = permission === 'granted'
+                ? 'Severe alert push enabled for this browser.'
+                : 'Browser permission changed; re-enable push if alerts stop arriving.';
+            return;
+        }
+
+        btn.textContent = permission === 'denied' ? 'Push Blocked by Browser' : 'Enable Severe Alert Push';
+        btn.disabled = permission === 'denied';
+        status.textContent = permission === 'denied'
+            ? 'Browser notifications are blocked. Allow notifications in site settings to enable push.'
+            : 'Receive push notifications on approaching or active alert transitions.';
+    } catch (err) {
+        btn.disabled = true;
+        status.textContent = `Push setup unavailable: ${err.message}`;
+    }
+}
+
+async function togglePushSubscription() {
+    const btn = document.getElementById('push-toggle-btn');
+    const status = document.getElementById('push-status');
+    if (!btn || !status) return;
+
+    try {
+        btn.disabled = true;
+        runtime.pushConfig = await pushApiRequest('/api/push/config');
+        const registration = await navigator.serviceWorker.ready;
+        const existing = await registration.pushManager.getSubscription();
+
+        if (existing) {
+            await pushApiRequest('/api/push/subscribe', {
+                method: 'DELETE',
+                body: JSON.stringify({ endpoint: existing.endpoint }),
+            });
+            await existing.unsubscribe();
+            status.textContent = 'Severe alert push disabled for this browser.';
+            await renderPushControls(true);
+            return;
+        }
+
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            status.textContent = 'Browser notification permission was not granted.';
+            await renderPushControls(true);
+            return;
+        }
+
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(runtime.pushConfig.vapid_public_key),
+        });
+        await pushApiRequest('/api/push/subscribe', {
+            method: 'POST',
+            body: JSON.stringify(subscription.toJSON()),
+        });
+        status.textContent = 'Severe alert push enabled for this browser.';
+        await renderPushControls(true);
+    } catch (err) {
+        status.textContent = `Push setup failed: ${err.message}`;
+        await renderPushControls(true);
+    } finally {
+        btn.disabled = false;
+    }
+}
 
 function normalizePressure(level) {
     const raw = String(level || 'unknown').toLowerCase();
@@ -3254,6 +3359,13 @@ function setupControls() {
         else await loadAll(true);
     });
 
+    const pushToggleBtn = document.getElementById('push-toggle-btn');
+    if (pushToggleBtn) {
+        pushToggleBtn.addEventListener('click', async () => {
+            await togglePushSubscription();
+        });
+    }
+
     document.getElementById('debug-report-btn').addEventListener('click', async () => {
         await reportDebugSnapshot('manual-panel-sync');
         setStatus('Debug snapshot synced', 'loading');
@@ -3437,13 +3549,14 @@ async function loadAll(forceFetch = false) {
         renderForecast(forceFetch),
         renderHourly(forceFetch),
         renderAlerts(forceFetch),
+        renderPushControls(forceFetch),
         renderPws(forceFetch),
         renderAstro(forceFetch),
         renderAqi(forceFetch),
         initRadar(),
     ];
 
-    const sectionNames = ['header', 'current', 'multi-current', 'forecast', 'hourly', 'alerts', 'pws', 'astro', 'aqi', 'radar'];
+    const sectionNames = ['header', 'current', 'multi-current', 'forecast', 'hourly', 'alerts', 'push', 'pws', 'astro', 'aqi', 'radar'];
     const nwsResults = await Promise.allSettled(tasks);
 
     try {

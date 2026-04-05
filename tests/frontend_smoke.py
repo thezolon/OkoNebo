@@ -68,6 +68,8 @@ def main() -> int:
     ensure(forecast_pos < compare_pos < pws_pos, "Location compare section must appear between forecast and PWS")
 
     for required_id in [
+        "push-toggle-btn",
+        "push-status",
         "compact-panel-layout-btn",
         "panel-layout-status",
         "debug-observability",

@@ -5,3 +5,4 @@ pyyaml==6.0.3
 cachetools==7.0.5
 python-dotenv==1.2.2
 cryptography==46.0.6
+pywebpush>=1.14,<3

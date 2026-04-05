@@ -239,6 +239,51 @@ class HistoryEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["hours"], 4)
         self.assertEqual([point["timestamp"] for point in payload["points"]], [100, 200])
 
+
+class PushNotificationTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self._orig_last_threat = main._LAST_THREAT_LEVEL
+
+    async def asyncTearDown(self):
+        main._LAST_THREAT_LEVEL = self._orig_last_threat
+
+    async def test_transition_push_uses_previous_level_and_no_duplicate_spam(self):
+        main._LAST_THREAT_LEVEL = "default"
+        alerts = [{"event": "Severe Thunderstorm Warning", "status": "active", "severity": "Severe"}]
+
+        with (
+            patch("app.main._load_webhooks", return_value=[]),
+            patch("app.main._send_push_notifications", new=AsyncMock()) as push_mock,
+        ):
+            await main._check_threat_transition_and_fire_webhooks(alerts)
+            await main._check_threat_transition_and_fire_webhooks(alerts)
+
+        push_mock.assert_awaited_once()
+        payload = push_mock.await_args.args[0]
+        self.assertEqual(payload["data"]["previous_level"], "default")
+        self.assertEqual(payload["data"]["current_level"], "active")
+
+    async def test_push_subscribe_and_unsubscribe_round_trip(self):
+        existing = main.SECURE_STORE.get_json(main._PUSH_SUBSCRIPTIONS_STORE_KEY, None)
+        try:
+            main.SECURE_STORE.delete(main._PUSH_SUBSCRIPTIONS_STORE_KEY)
+            payload = {
+                "endpoint": "https://example.test/push/123",
+                "keys": {"p256dh": "abc", "auth": "def"},
+            }
+            subscribed = await main.api_push_subscribe(payload)
+            self.assertTrue(subscribed["ok"])
+            self.assertEqual(subscribed["subscription_count"], 1)
+
+            unsubscribed = await main.api_push_unsubscribe({"endpoint": payload["endpoint"]})
+            self.assertTrue(unsubscribed["ok"])
+            self.assertEqual(unsubscribed["subscription_count"], 0)
+        finally:
+            if existing is None:
+                main.SECURE_STORE.delete(main._PUSH_SUBSCRIPTIONS_STORE_KEY)
+            else:
+                main.SECURE_STORE.set_json(main._PUSH_SUBSCRIPTIONS_STORE_KEY, existing)
+
     async def test_disabled_provider_not_in_attempted(self):
         """Disabled providers must never appear in the attempted list."""
         main.PROVIDERS = {
