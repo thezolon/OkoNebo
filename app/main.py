@@ -1759,6 +1759,168 @@ async def api_settings_get():
             "visualcrossing": "env" if os.getenv("VISUALCROSSING_API_KEY") else "secure_store",
         },
     }
+def _apply_location_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> None:
+    location = payload.get("location", {})
+    home = location.get("home", {})
+    work = location.get("work")
+    timezone = str(location.get("timezone", cfg.get("location", {}).get("timezone", "UTC")) or "UTC").strip()
+    if not _valid_timezone(timezone):
+        raise HTTPException(status_code=400, detail="Invalid timezone")
+
+    try:
+        home_lat = float(home.get("lat"))
+        home_lon = float(home.get("lon"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Home location lat/lon must be numeric") from exc
+    if not (-90.0 <= home_lat <= 90.0 and -180.0 <= home_lon <= 180.0):
+        raise HTTPException(status_code=400, detail="Home location lat must be -90..90 and lon -180..180")
+
+    home_label = _sanitize_label(home.get("label"), "Home", "Home label")
+    cfg["location"] = {
+        "lat": home_lat,
+        "lon": home_lon,
+        "label": home_label,
+        "timezone": timezone,
+    }
+
+    alert_locations = [{"lat": home_lat, "lon": home_lon, "label": home_label}]
+    if isinstance(work, dict) and work.get("lat") not in (None, "") and work.get("lon") not in (None, ""):
+        try:
+            work_lat = float(work.get("lat"))
+            work_lon = float(work.get("lon"))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Work location lat/lon must be numeric") from exc
+        if not (-90.0 <= work_lat <= 90.0 and -180.0 <= work_lon <= 180.0):
+            raise HTTPException(status_code=400, detail="Work location lat must be -90..90 and lon -180..180")
+        alert_locations.append(
+            {
+                "lat": work_lat,
+                "lon": work_lon,
+                "label": _sanitize_label(work.get("label"), "Work", "Work label"),
+            }
+        )
+    cfg["alert_locations"] = alert_locations
+
+    if "user_agent" in payload:
+        cfg["user_agent"] = _sanitize_user_agent(payload.get("user_agent"), cfg.get("user_agent") or USER_AGENT)
+
+
+def _apply_pws_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any]:
+    pws_payload = payload.get("pws", {}) if isinstance(payload.get("pws", {}), dict) else {}
+    pws_cfg = cfg.get("pws", {}) if isinstance(cfg.get("pws", {}), dict) else {}
+    if "provider" in pws_payload:
+        pws_cfg["provider"] = str(pws_payload.get("provider") or pws_cfg.get("provider") or "weather.com")
+    if "stations" in pws_payload:
+        pws_cfg["stations"] = _sanitize_pws_stations(pws_payload.get("stations") or [])
+    cfg["pws"] = pws_cfg
+
+    if "api_key" in pws_payload:
+        raw = str(pws_payload.get("api_key") or "").strip()
+        if raw and len(raw) > 512:
+            raise HTTPException(status_code=400, detail="pws api_key must be <= 512 characters")
+        if raw:
+            SECURE_STORE.set_json("providers.pws.api_key", raw)
+        else:
+            SECURE_STORE.delete("providers.pws.api_key")
+
+    return pws_cfg
+
+
+def _apply_auth_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    auth_payload = payload.get("auth", {}) if isinstance(payload.get("auth", {}), dict) else {}
+    auth_cfg = cfg.get("auth", {}) if isinstance(cfg.get("auth", {}), dict) else {}
+    users = list(auth_cfg.get("users", []) or [])
+
+    def upsert_user(role: str, username: str | None, password: str | None) -> None:
+        if not username:
+            return
+        uname = _sanitize_username(username, role)
+        if not uname:
+            return
+        existing = None
+        for user in users:
+            if str(user.get("username", "")).strip().lower() == uname.lower():
+                existing = user
+                break
+        if existing is None:
+            existing = {"username": uname, "role": role}
+            users.append(existing)
+        existing["username"] = uname
+        existing["role"] = role
+        if password:
+            _validate_password_strength(str(password), role)
+            existing["password_hash"] = _hash_password(password)
+            existing.pop("password", None)
+
+    if "enabled" in auth_payload:
+        auth_cfg["enabled"] = bool(auth_payload.get("enabled"))
+    else:
+        auth_cfg["enabled"] = bool(auth_cfg.get("enabled", False))
+
+    if "require_viewer_login" in auth_payload:
+        auth_cfg["require_viewer_login"] = bool(auth_payload.get("require_viewer_login"))
+    else:
+        auth_cfg["require_viewer_login"] = bool(auth_cfg.get("require_viewer_login", False))
+
+    admin_password = str(auth_payload.get("admin_password") or "").strip() or None
+    viewer_password = str(auth_payload.get("viewer_password") or "").strip() or None
+    admin_username = str(auth_payload.get("admin_username") or "").strip() or ("admin" if admin_password else None)
+    viewer_username = str(auth_payload.get("viewer_username") or "").strip() or ("viewer" if viewer_password else None)
+
+    upsert_user("admin", admin_username, admin_password)
+    upsert_user("viewer", viewer_username, viewer_password)
+
+    if auth_cfg.get("enabled"):
+        has_admin = any(str(user.get("role")) == "admin" for user in users)
+        if not has_admin:
+            raise HTTPException(status_code=400, detail="At least one admin user is required when auth is enabled")
+        for user in users:
+            if str(user.get("role")) == "admin":
+                has_password = bool(user.get("password_hash") or user.get("password"))
+                if not has_password:
+                    raise HTTPException(status_code=400, detail="Admin password is required when auth is enabled")
+
+    auth_cfg["users"] = users
+    auth_cfg["token_secret"] = str(auth_cfg.get("token_secret") or secrets.token_hex(24))
+    cfg["auth"] = auth_cfg
+    return auth_cfg, users
+
+
+def _apply_providers_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    providers_payload = payload.get("providers", {}) if isinstance(payload.get("providers", {}), dict) else {}
+    providers_cfg = cfg.get("providers", {}) if isinstance(cfg.get("providers", {}), dict) else {}
+    runtime_providers: dict[str, dict[str, Any]] = {}
+    for pid in PROVIDER_IDS:
+        p_payload = providers_payload.get(pid, {}) if isinstance(providers_payload.get(pid, {}), dict) else {}
+        p_cfg = providers_cfg.get(pid, {}) if isinstance(providers_cfg.get(pid, {}), dict) else {}
+        enabled = bool(p_payload.get("enabled", p_cfg.get("enabled", False)))
+        providers_cfg[pid] = {"enabled": enabled}
+        runtime_providers[pid] = {"enabled": enabled}
+
+        if "api_key" in p_payload:
+            raw = str(p_payload.get("api_key") or "").strip()
+            if raw and len(raw) > 512:
+                raise HTTPException(status_code=400, detail=f"{pid} api_key must be <= 512 characters")
+            if pid == "meteomatics" and raw and ":" not in raw:
+                raise HTTPException(status_code=400, detail="meteomatics api_key must be username:password")
+            if raw:
+                SECURE_STORE.set_json(f"providers.{pid}.api_key", raw)
+            else:
+                SECURE_STORE.delete(f"providers.{pid}.api_key")
+
+    cfg["providers"] = providers_cfg
+    return runtime_providers
+
+
+def _apply_map_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> str:
+    map_payload = payload.get("map", {}) if isinstance(payload.get("map", {}), dict) else {}
+    map_cfg = cfg.get("map", {}) if isinstance(cfg.get("map", {}), dict) else {}
+    chosen_map_provider = str(map_payload.get("provider") or map_cfg.get("provider") or "esri_street")
+    if chosen_map_provider not in MAP_PROVIDER_IDS:
+        raise HTTPException(status_code=400, detail="Unsupported map provider")
+    map_cfg["provider"] = chosen_map_provider
+    cfg["map"] = map_cfg
+    return chosen_map_provider
 
 
 @app.post(
@@ -1771,161 +1933,11 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
     start_ts = time.time()
     async with _cfg_lock:
         cfg = _load_config_file()
-
-        location = payload.get("location", {})
-        home = location.get("home", {})
-        work = location.get("work")
-        timezone = str(location.get("timezone", cfg.get("location", {}).get("timezone", "UTC")) or "UTC").strip()
-        if not _valid_timezone(timezone):
-            raise HTTPException(status_code=400, detail="Invalid timezone")
-
-        try:
-            home_lat = float(home.get("lat"))
-            home_lon = float(home.get("lon"))
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail="Home location lat/lon must be numeric") from exc
-        if not (-90.0 <= home_lat <= 90.0 and -180.0 <= home_lon <= 180.0):
-            raise HTTPException(status_code=400, detail="Home location lat must be -90..90 and lon -180..180")
-
-        home_label = _sanitize_label(home.get("label"), "Home", "Home label")
-        cfg["location"] = {
-            "lat": home_lat,
-            "lon": home_lon,
-            "label": home_label,
-            "timezone": timezone,
-        }
-
-        alert_locations = [{"lat": home_lat, "lon": home_lon, "label": home_label}]
-        if isinstance(work, dict) and work.get("lat") not in (None, "") and work.get("lon") not in (None, ""):
-            try:
-                work_lat = float(work.get("lat"))
-                work_lon = float(work.get("lon"))
-            except Exception as exc:
-                raise HTTPException(status_code=400, detail="Work location lat/lon must be numeric") from exc
-            if not (-90.0 <= work_lat <= 90.0 and -180.0 <= work_lon <= 180.0):
-                raise HTTPException(status_code=400, detail="Work location lat must be -90..90 and lon -180..180")
-            alert_locations.append(
-                {
-                    "lat": work_lat,
-                    "lon": work_lon,
-                    "label": _sanitize_label(work.get("label"), "Work", "Work label"),
-                }
-            )
-        cfg["alert_locations"] = alert_locations
-
-        if "user_agent" in payload:
-            cfg["user_agent"] = _sanitize_user_agent(payload.get("user_agent"), cfg.get("user_agent") or USER_AGENT)
-
-        # PWS (The Weather Company Personal Weather Station API) configuration
-        # https://twcapi.co/ - provider and stations in config.yaml (non-secrets),
-        # api_key stored encrypted in SECURE_STORE for security
-        pws_payload = payload.get("pws", {}) if isinstance(payload.get("pws", {}), dict) else {}
-        pws_cfg = cfg.get("pws", {}) if isinstance(cfg.get("pws", {}), dict) else {}
-        if "provider" in pws_payload:
-            pws_cfg["provider"] = str(pws_payload.get("provider") or pws_cfg.get("provider") or "weather.com")
-        if "stations" in pws_payload:
-            pws_cfg["stations"] = _sanitize_pws_stations(pws_payload.get("stations") or [])
-        cfg["pws"] = pws_cfg
-
-        # Store PWS API key in secure store (like other providers)
-        if "api_key" in pws_payload:
-            raw = str(pws_payload.get("api_key") or "").strip()
-            if raw and len(raw) > 512:
-                raise HTTPException(status_code=400, detail="pws api_key must be <= 512 characters")
-            if raw:
-                SECURE_STORE.set_json("providers.pws.api_key", raw)
-            else:
-                SECURE_STORE.delete("providers.pws.api_key")
-
-        auth_payload = payload.get("auth", {}) if isinstance(payload.get("auth", {}), dict) else {}
-        auth_cfg = cfg.get("auth", {}) if isinstance(cfg.get("auth", {}), dict) else {}
-        users = list(auth_cfg.get("users", []) or [])
-
-        def upsert_user(role: str, username: str | None, password: str | None) -> None:
-            if not username:
-                return
-            uname = _sanitize_username(username, role)
-            if not uname:
-                return
-            existing = None
-            for user in users:
-                if str(user.get("username", "")).strip().lower() == uname.lower():
-                    existing = user
-                    break
-            if existing is None:
-                existing = {"username": uname, "role": role}
-                users.append(existing)
-            existing["username"] = uname
-            existing["role"] = role
-            if password:
-                _validate_password_strength(str(password), role)
-                existing["password_hash"] = _hash_password(password)
-                existing.pop("password", None)
-
-        if "enabled" in auth_payload:
-            auth_cfg["enabled"] = bool(auth_payload.get("enabled"))
-        else:
-            auth_cfg["enabled"] = bool(auth_cfg.get("enabled", False))
-
-        if "require_viewer_login" in auth_payload:
-            auth_cfg["require_viewer_login"] = bool(auth_payload.get("require_viewer_login"))
-        else:
-            auth_cfg["require_viewer_login"] = bool(auth_cfg.get("require_viewer_login", False))
-
-        # If username is blank but a password was provided, use sensible defaults so
-        # the user isn't silently dropped (matches the placeholder values in the UI).
-        admin_password = str(auth_payload.get("admin_password") or "").strip() or None
-        viewer_password = str(auth_payload.get("viewer_password") or "").strip() or None
-        admin_username = str(auth_payload.get("admin_username") or "").strip() or ("admin" if admin_password else None)
-        viewer_username = str(auth_payload.get("viewer_username") or "").strip() or ("viewer" if viewer_password else None)
-
-        upsert_user("admin", admin_username, admin_password)
-        upsert_user("viewer", viewer_username, viewer_password)
-
-        if auth_cfg.get("enabled"):
-            has_admin = any(str(user.get("role")) == "admin" for user in users)
-            if not has_admin:
-                raise HTTPException(status_code=400, detail="At least one admin user is required when auth is enabled")
-            for user in users:
-                if str(user.get("role")) == "admin":
-                    has_password = bool(user.get("password_hash") or user.get("password"))
-                    if not has_password:
-                        raise HTTPException(status_code=400, detail="Admin password is required when auth is enabled")
-
-        auth_cfg["users"] = users
-        auth_cfg["token_secret"] = str(auth_cfg.get("token_secret") or secrets.token_hex(24))
-        cfg["auth"] = auth_cfg
-
-        providers_payload = payload.get("providers", {}) if isinstance(payload.get("providers", {}), dict) else {}
-        providers_cfg = cfg.get("providers", {}) if isinstance(cfg.get("providers", {}), dict) else {}
-        runtime_providers: dict[str, dict[str, Any]] = {}
-        for pid in PROVIDER_IDS:
-            p_payload = providers_payload.get(pid, {}) if isinstance(providers_payload.get(pid, {}), dict) else {}
-            p_cfg = providers_cfg.get(pid, {}) if isinstance(providers_cfg.get(pid, {}), dict) else {}
-            enabled = bool(p_payload.get("enabled", p_cfg.get("enabled", False)))
-            providers_cfg[pid] = {"enabled": enabled}
-            runtime_providers[pid] = {"enabled": enabled}
-
-            if "api_key" in p_payload:
-                raw = str(p_payload.get("api_key") or "").strip()
-                if raw and len(raw) > 512:
-                    raise HTTPException(status_code=400, detail=f"{pid} api_key must be <= 512 characters")
-                if pid == "meteomatics" and raw and ":" not in raw:
-                    raise HTTPException(status_code=400, detail="meteomatics api_key must be username:password")
-                if raw:
-                    SECURE_STORE.set_json(f"providers.{pid}.api_key", raw)
-                else:
-                    SECURE_STORE.delete(f"providers.{pid}.api_key")
-
-        cfg["providers"] = providers_cfg
-
-        map_payload = payload.get("map", {}) if isinstance(payload.get("map", {}), dict) else {}
-        map_cfg = cfg.get("map", {}) if isinstance(cfg.get("map", {}), dict) else {}
-        chosen_map_provider = str(map_payload.get("provider") or map_cfg.get("provider") or "esri_street")
-        if chosen_map_provider not in MAP_PROVIDER_IDS:
-            raise HTTPException(status_code=400, detail="Unsupported map provider")
-        map_cfg["provider"] = chosen_map_provider
-        cfg["map"] = map_cfg
+        _apply_location_payload(payload, cfg)
+        pws_cfg = _apply_pws_payload(payload, cfg)
+        auth_cfg, users = _apply_auth_payload(payload, cfg)
+        runtime_providers = _apply_providers_payload(payload, cfg)
+        chosen_map_provider = _apply_map_payload(payload, cfg)
 
         cache_payload = payload.get("cache", {}) if isinstance(payload.get("cache", {}), dict) else {}
         provider_ttl_payload = (
