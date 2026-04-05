@@ -239,14 +239,30 @@
                 <div id="forecast-list" class="forecast-list"></div>
             </section>
 
-            <section class="panel-sec" id="debug-section">
+            <section class="panel-sec" id="pws-section" style="display:none">
+                <div class="panel-sec-hdr">
+                    <h3>PWS Pair (Property)</h3>
+                    <div class="pws-head-controls">
+                        <select id="pws-trend-hours" class="ctrl-sel-sm">
+                            <option value="1">1h</option>
+                            <option value="2">2h</option>
+                            <option value="3" selected>3h</option>
+                        </select>
+                        <span id="pws-meta" class="pws-meta">--</span>
+                    </div>
+                </div>
+                <div id="pws-cards" class="pws-cards"></div>
+                <div id="pws-delta" class="pws-delta"></div>
+            </section>
+
+            <section class="panel-sec" id="debug-section" data-default-collapsed="true">
                 <div class="panel-sec-hdr">
                     <h3>System Status</h3>
                     <div style="display:flex; gap:6px; align-items:center;">
                         <button id="compact-panel-layout-btn" class="map-btn debug-btn" type="button" title="Collapse or expand utility panels">Compact</button>
                         <button id="reset-panel-layout-btn" class="map-btn debug-btn" type="button" title="Reset panel layout">Reset Layout</button>
                         <button id="debug-report-btn" class="map-btn debug-btn" type="button">Sync</button>
-                        <button id="toggle-debug-section" class="panel-toggle" type="button" aria-expanded="true" title="Collapse section">▾</button>
+                        <button id="toggle-debug-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
                     </div>
                 </div>
                 <div class="panel-sec-body">
@@ -319,22 +335,6 @@
                     <div class="timeline-empty">No activity yet</div>
                 </div>
                 </div>
-            </section>
-
-            <section class="panel-sec" id="pws-section" style="display:none">
-                <div class="panel-sec-hdr">
-                    <h3>PWS Pair (Property)</h3>
-                    <div class="pws-head-controls">
-                        <select id="pws-trend-hours" class="ctrl-sel-sm">
-                            <option value="1">1h</option>
-                            <option value="2">2h</option>
-                            <option value="3" selected>3h</option>
-                        </select>
-                        <span id="pws-meta" class="pws-meta">--</span>
-                    </div>
-                </div>
-                <div id="pws-cards" class="pws-cards"></div>
-                <div id="pws-delta" class="pws-delta"></div>
             </section>
 
             <section class="panel-sec" id="owm-daily-section" style="display:none">
