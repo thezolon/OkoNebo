@@ -179,6 +179,32 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
         self.assertIn("Authentication required", resp.text)
 
+    def test_first_run_settings_save_allowed_when_auth_enabled(self):
+        main.AUTH_ENABLED = True
+        main.AUTH_REQUIRE_VIEWER_LOGIN = True
+        main.FIRST_RUN_COMPLETE = False
+
+        resp = self.client.post(
+            "/api/settings",
+            json={
+                "location": {
+                    "home": {"lat": 36.1539, "lon": -95.9928, "label": "Home"},
+                    "timezone": "America/Chicago",
+                },
+                "providers": {
+                    "nws": {"enabled": True},
+                    "aviationweather": {"enabled": True},
+                    "noaa_tides": {"enabled": True},
+                },
+                "mark_first_run_complete": True,
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        bootstrap = self.client.get("/api/bootstrap")
+        self.assertEqual(bootstrap.status_code, 200)
+        self.assertFalse(bootstrap.json().get("first_run_required"))
+
     def test_settings_rejects_invalid_timezone(self):
         main.AUTH_ENABLED = False
         resp = self.client.post(

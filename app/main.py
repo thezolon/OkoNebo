@@ -849,6 +849,18 @@ async def api_auth_guard(request: Request, call_next):
     if path == "/api/capabilities":
         return await call_next(request)
 
+    # Allow exactly one unauthenticated first-run settings save so bootstrap can complete
+    # even when AUTH_ENABLED is forced via environment.
+    if path == "/api/settings" and method == "POST" and not FIRST_RUN_COMPLETE:
+        try:
+            raw_body = await request.body()
+            request._body = raw_body
+            payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+            if isinstance(payload, dict) and bool(payload.get("mark_first_run_complete")):
+                return await call_next(request)
+        except Exception:
+            pass
+
     identity = _request_identity(request)
     admin_only = (path == "/api/settings" and method == "POST") or path.startswith("/api/agent-tokens")
 

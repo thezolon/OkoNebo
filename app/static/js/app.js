@@ -2835,10 +2835,14 @@ async function saveFirstRunSettings() {
     const workLon = parseFloat(document.getElementById('fr-work-lon')?.value.trim());
     const workLabel = document.getElementById('fr-work-label')?.value.trim() || 'Work';
     const hasWork = !isNaN(workLat) && !isNaN(workLon);
+    const pwsStations = (document.getElementById('fr-pws-stations')?.value || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 
     const buildProviders = () => {
         const result = {};
-        const providerFields = ['nws','weatherapi','tomorrow','visualcrossing','openweather','aviationweather','noaa_tides','meteomatics'];
+        const providerFields = ['nws','weatherapi','tomorrow','visualcrossing','openweather','pws','aviationweather','noaa_tides','meteomatics'];
         for (const pid of providerFields) {
             const enabled = document.getElementById(`fr-${pid}-enabled`)?.checked ?? false;
             const keyEl = document.getElementById(`fr-${pid}-key`);
@@ -2853,6 +2857,10 @@ async function saveFirstRunSettings() {
             home: { lat: homeLat, lon: homeLon, label: homeLabel },
             ...(hasWork ? { work: { lat: workLat, lon: workLon, label: workLabel } } : {}),
             timezone: document.getElementById('fr-timezone')?.value.trim() || 'UTC',
+        },
+        pws: {
+            provider: document.getElementById('fr-pws-provider')?.value.trim() || 'weather.com',
+            stations: pwsStations,
         },
         map: { provider: document.getElementById('fr-map-provider')?.value || 'esri_street' },
         providers: buildProviders(),

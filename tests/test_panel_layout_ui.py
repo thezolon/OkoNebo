@@ -85,6 +85,16 @@ class PanelLayoutUITests(unittest.TestCase):
         self.assertIn('id="forecast-section"', html)
         self.assertNotIn('id="toggle-forecast-section"', html)
 
+    def test_first_run_overlay_includes_pws_fields(self):
+        """Verify first-run setup exposes PWS configuration inputs."""
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.text
+        self.assertIn('id="fr-pws-enabled"', html)
+        self.assertIn('id="fr-pws-key"', html)
+        self.assertIn('id="fr-pws-provider"', html)
+        self.assertIn('id="fr-pws-stations"', html)
+
 
 if __name__ == '__main__':
     unittest.main()
