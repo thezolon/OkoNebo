@@ -6,6 +6,8 @@
 
 OkoNebo is a self-hosted weather dashboard and local API for your location. It combines current conditions, alerts, 7-day forecast, hourly trend, radar, PWS data, aviation METAR, and coastal tide predictions in one Docker service.
 
+This project is also a personal demonstration of AI-assisted software development — designed, built, and iterated on with [GitHub Copilot](https://github.com/features/copilot) as an active collaborator throughout the full development lifecycle.
+
 ## Features
 
 - **Multi-provider fallback** - NWS -> WeatherAPI -> Tomorrow.io -> Visual Crossing -> Meteomatics; first successful response wins
