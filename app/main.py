@@ -508,6 +508,49 @@ def _find_user(username: str) -> dict[str, Any] | None:
     return None
 
 
+def _refresh_auth_users_from_store() -> None:
+    """Reload auth users from secure store with bootstrap-env fallback when empty."""
+    global AUTH_USERS
+    stored_auth_users = SECURE_STORE.get_json("auth.users", None)
+    sqlite_has_auth_users = isinstance(stored_auth_users, list) and len(stored_auth_users) > 0
+
+    if sqlite_has_auth_users:
+        AUTH_USERS = list(stored_auth_users)
+        return
+
+    cfg = _load_config_file()
+    runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
+    auth_cfg = runtime_cfg.get("auth", {}) if isinstance(runtime_cfg.get("auth", {}), dict) else {}
+    if not auth_cfg:
+        auth_cfg = cfg.get("auth", {}) if isinstance(cfg.get("auth", {}), dict) else {}
+
+    AUTH_USERS = list(auth_cfg.get("users", []) or [])
+
+    env_admin_username = str(os.getenv("ADMIN_USERNAME") or "").strip()
+    env_admin_password = str(os.getenv("ADMIN_PASSWORD") or "").strip()
+    env_viewer_username = str(os.getenv("VIEWER_USERNAME") or "").strip()
+    env_viewer_password = str(os.getenv("VIEWER_PASSWORD") or "").strip()
+
+    def _upsert_env_user(role: str, username: str, password: str) -> None:
+        if not username or not password:
+            return
+        match = None
+        for user in AUTH_USERS:
+            if str(user.get("username", "")).strip().lower() == username.lower():
+                match = user
+                break
+        if match is None:
+            match = {}
+            AUTH_USERS.append(match)
+        match["username"] = username
+        match["role"] = role
+        match["password_hash"] = _hash_password(password)
+        match.pop("password", None)
+
+    _upsert_env_user("admin", env_admin_username, env_admin_password)
+    _upsert_env_user("viewer", env_viewer_username, env_viewer_password)
+
+
 def _make_token(
     username: str,
     role: str,
@@ -1030,6 +1073,11 @@ async def api_auth_login(payload: dict[str, Any] = Body(...), request: Request =
             headers={"Retry-After": "300"},
         )
     bucket.append(now)
+
+    # Always reload auth users from secure store before credential verification.
+    # This avoids stale in-memory auth data and allows immediate recovery updates
+    # (for example via docker exec reset_admin.py) without app restart.
+    _refresh_auth_users_from_store()
 
     username = str(payload.get("username") or "").strip()
     password = str(payload.get("password") or "")

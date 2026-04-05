@@ -127,7 +127,10 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         main.AUTH_ENABLED = True
         main.AUTH_REQUIRE_VIEWER_LOGIN = True
         main.AUTH_TOKEN_SECRET = "integration-secret"
-        main.AUTH_USERS = [{"username": "admin", "password": "secret123", "role": "admin"}]
+        main.SECURE_STORE.set_json(
+            "auth.users",
+            [{"username": "admin", "password": "secret123", "role": "admin"}],
+        )
 
         login = self.client.post(
             "/api/auth/login",
@@ -151,7 +154,10 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         main.AUTH_ENABLED = True
         main.AUTH_REQUIRE_VIEWER_LOGIN = True
         main.AUTH_TOKEN_SECRET = "integration-secret"
-        main.AUTH_USERS = [{"username": "admin", "password_hash": main._hash_password("secret123"), "role": "admin"}]
+        main.SECURE_STORE.set_json(
+            "auth.users",
+            [{"username": "admin", "password_hash": main._hash_password("secret123"), "role": "admin"}],
+        )
 
         login = self.client.post(
             "/api/auth/login",
@@ -237,6 +243,33 @@ class SetupAuthIntegrationTests(unittest.TestCase):
             os.environ.pop("ADMIN_USERNAME", None)
             os.environ.pop("ADMIN_PASSWORD", None)
             os.environ.pop("AUTH_ENABLED", None)
+
+    def test_login_refreshes_users_after_store_update(self):
+        main.AUTH_ENABLED = True
+        main.AUTH_REQUIRE_VIEWER_LOGIN = False
+        main.AUTH_USERS = [
+            {
+                "username": "admin",
+                "role": "admin",
+                "password_hash": main._hash_password("old-password-123"),
+            }
+        ]
+        main.SECURE_STORE.set_json(
+            "auth.users",
+            [
+                {
+                    "username": "admin",
+                    "role": "admin",
+                    "password_hash": main._hash_password("new-password-123"),
+                }
+            ],
+        )
+
+        login = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "new-password-123"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
 
     def test_settings_rejects_invalid_timezone(self):
         main.AUTH_ENABLED = False

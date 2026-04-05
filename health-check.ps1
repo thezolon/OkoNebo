@@ -20,27 +20,34 @@ function Check-Endpoint {
     param(
         [string]$Label,
         [string]$Url,
-        [int[]]$AcceptCodes = @(200)
+        [int[]]$AcceptCodes = @(200),
+        [int]$Retries = 1,
+        [int]$DelaySeconds = 0
     )
     Write-Host -NoNewline "${Label}: "
-    try {
-        $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
-        $code = $resp.StatusCode
-    } catch {
-        # Invoke-WebRequest throws on 4xx/5xx — extract status from exception
-        $code = $_.Exception.Response.StatusCode.value__
-        if (-not $code) { $code = 0 }
+    $code = 0
+    for ($i = 1; $i -le $Retries; $i++) {
+        try {
+            $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+            $code = $resp.StatusCode
+        } catch {
+            # Invoke-WebRequest throws on 4xx/5xx — extract status from exception
+            $code = $_.Exception.Response.StatusCode.value__
+            if (-not $code) { $code = 0 }
+        }
+        if ($AcceptCodes -contains $code) {
+            Write-Host "OK ($code)" -ForegroundColor Green
+            return $true
+        }
+        if ($i -lt $Retries -and $DelaySeconds -gt 0) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
     }
-    if ($AcceptCodes -contains $code) {
-        Write-Host "OK ($code)" -ForegroundColor Green
-        return $true
-    } else {
-        Write-Host "FAILED ($code)" -ForegroundColor Red
-        return $false
-    }
+    Write-Host "FAILED ($code)" -ForegroundColor Red
+    return $false
 }
 
-$allOk = (Check-Endpoint "Config endpoint"    "$base/api/config"    200)       -and $allOk
+$allOk = (Check-Endpoint "Config endpoint"    "$base/api/config"    200 15 1)   -and $allOk
 $allOk = (Check-Endpoint "Bootstrap endpoint" "$base/api/bootstrap" 200)       -and $allOk
 $allOk = (Check-Endpoint "Current conditions" "$base/api/current"   200, 502)  -and $allOk
 $allOk = (Check-Endpoint "Active alerts"      "$base/api/alerts"    200, 502)  -and $allOk

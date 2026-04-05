@@ -6,7 +6,7 @@ HOST="${1:-localhost:8888}"
 echo "Checking weather app at http://$HOST..."
 echo ""
 
-# _check_endpoint <label> <url> <acceptable_codes_grep_pattern>
+# _check_endpoint <label> <url> <acceptable_codes_grep_pattern> [retries] [delay_seconds]
 # Acceptable codes is a grep pattern matched against the HTTP status code.
 # Use "200" for infra endpoints; "200\|502" for weather-data endpoints that
 # may legitimately 502 when no provider API keys / valid coordinates are set.
@@ -14,19 +14,28 @@ _check_endpoint() {
     local label="$1"
     local url="$2"
     local pattern="${3:-200}"
+    local retries="${4:-1}"
+    local delay="${5:-0}"
     echo -n "${label}: "
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" "${url}")
-    if echo "${code}" | grep -qE "${pattern}"; then
-        echo "✓ OK (${code})"
-        return 0
-    else
-        echo "✗ FAILED (${code})"
-        return 1
-    fi
+    local code="000"
+
+    for ((i=1; i<=retries; i++)); do
+        code=$(curl -s -o /dev/null -w "%{http_code}" "${url}")
+        if echo "${code}" | grep -qE "${pattern}"; then
+            echo "✓ OK (${code})"
+            return 0
+        fi
+        if (( i < retries )) && (( delay > 0 )); then
+            sleep "${delay}"
+        fi
+    done
+
+    echo "✗ FAILED (${code})"
+    return 1
 }
 
-_check_endpoint "Config endpoint"     "http://$HOST/api/config"       "200"       || exit 1
+# Config can fail briefly right after container start; allow warm-up retries.
+_check_endpoint "Config endpoint"     "http://$HOST/api/config"       "200"      15 1 || exit 1
 _check_endpoint "Bootstrap endpoint"  "http://$HOST/api/bootstrap"    "200"       || exit 1
 _check_endpoint "Current conditions"  "http://$HOST/api/current"      "200|502"   || exit 1
 _check_endpoint "Active alerts"       "http://$HOST/api/alerts"       "200|502"   || exit 1
