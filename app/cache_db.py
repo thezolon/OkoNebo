@@ -5,6 +5,7 @@ Reduces API calls by caching responses with different retention policies based o
 
 import sqlite3
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -122,6 +123,9 @@ class WeatherCache:
     def __init__(self, db_path: str = "cache.db"):
         self.db_path = Path(db_path)
         self._ttl_overrides: Dict[str, int] = {}
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._init_db()
 
     def set_ttl_overrides(self, overrides: Dict[str, Any] | None):
@@ -149,15 +153,15 @@ class WeatherCache:
 
     def _init_db(self):
         """Create cache table if it doesn't exist."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+        with self._lock:
+            self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS cache (
                     key TEXT PRIMARY KEY,
                     data TEXT NOT NULL,
                     timestamp INTEGER NOT NULL
                 )
             """)
-            conn.commit()
+            self._conn.commit()
 
     def _get_ttl(self, cache_type: str, threat_level: str = "default") -> int:
         """Get TTL in seconds based on threat level."""
@@ -172,12 +176,12 @@ class WeatherCache:
         json_data = json.dumps(data)
         timestamp = int(time.time())
 
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
+        with self._lock:
+            self._conn.execute(
                 "INSERT OR REPLACE INTO cache (key, data, timestamp) VALUES (?, ?, ?)",
                 (key, json_data, timestamp),
             )
-            conn.commit()
+            self._conn.commit()
 
     def get(self, key: str, cache_type: str = "default", threat_level: str = "default") -> Optional[Dict[str, Any]]:
         """
@@ -194,8 +198,8 @@ class WeatherCache:
         ttl = self.resolve_ttl(cache_type, threat_level)
         now = int(time.time())
 
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute("SELECT data, timestamp FROM cache WHERE key = ?", (key,)).fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT data, timestamp FROM cache WHERE key = ?", (key,)).fetchone()
 
         if not row:
             return None
@@ -204,8 +208,7 @@ class WeatherCache:
         age = now - stored_time
 
         if age > ttl:
-            # Expired; remove it
-            self.delete(key)
+            # Expired values are ignored at read-time; cleanup is handled elsewhere.
             return None
 
         try:
@@ -215,15 +218,15 @@ class WeatherCache:
 
     def delete(self, key: str):
         """Remove entry from cache."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM cache WHERE key = ?", (key,))
-            conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM cache WHERE key = ?", (key,))
+            self._conn.commit()
 
     def clear(self):
         """Clear all cache entries."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM cache")
-            conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM cache")
+            self._conn.commit()
 
     def get_threat_level(self, alerts: list) -> str:
         """
@@ -269,8 +272,8 @@ class WeatherCache:
 
     def stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
-        with sqlite3.connect(self.db_path) as conn:
-            count = conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+        with self._lock:
+            count = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
             size_bytes = self.db_path.stat().st_size if self.db_path.exists() else 0
 
         return {
@@ -278,3 +281,8 @@ class WeatherCache:
             "size_bytes": size_bytes,
             "size_mb": round(size_bytes / (1024 * 1024), 3),
         }
+
+    def close(self):
+        """Close the persistent SQLite connection."""
+        with self._lock:
+            self._conn.close()
