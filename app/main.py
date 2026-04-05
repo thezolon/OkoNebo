@@ -1864,10 +1864,12 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
         else:
             auth_cfg["require_viewer_login"] = bool(auth_cfg.get("require_viewer_login", False))
 
-        admin_username = str(auth_payload.get("admin_username") or "").strip() or None
+        # If username is blank but a password was provided, use sensible defaults so
+        # the user isn't silently dropped (matches the placeholder values in the UI).
         admin_password = str(auth_payload.get("admin_password") or "").strip() or None
-        viewer_username = str(auth_payload.get("viewer_username") or "").strip() or None
         viewer_password = str(auth_payload.get("viewer_password") or "").strip() or None
+        admin_username = str(auth_payload.get("admin_username") or "").strip() or ("admin" if admin_password else None)
+        viewer_username = str(auth_payload.get("viewer_username") or "").strip() or ("viewer" if viewer_password else None)
 
         upsert_user("admin", admin_username, admin_password)
         upsert_user("viewer", viewer_username, viewer_password)

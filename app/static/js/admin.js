@@ -501,9 +501,10 @@ async function saveSettings() {
         auth: {
             enabled: !!document.getElementById('setup-auth-enabled').checked,
             require_viewer_login: !!document.getElementById('setup-auth-viewer-required').checked,
-            admin_username: document.getElementById('setup-auth-admin-user').value.trim(),
+            // Fall back to placeholder so leaving the field blank still submits the displayed default
+            admin_username: document.getElementById('setup-auth-admin-user').value.trim() || document.getElementById('setup-auth-admin-user').placeholder || 'admin',
             admin_password: document.getElementById('setup-auth-admin-pass').value.trim(),
-            viewer_username: document.getElementById('setup-auth-viewer-user').value.trim(),
+            viewer_username: document.getElementById('setup-auth-viewer-user').value.trim() || document.getElementById('setup-auth-viewer-user').placeholder || 'viewer',
             viewer_password: document.getElementById('setup-auth-viewer-pass').value.trim(),
         },
         cache: {
