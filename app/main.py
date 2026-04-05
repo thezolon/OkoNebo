@@ -419,6 +419,8 @@ _LOGIN_ATTEMPT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 # Token denylist — revoked tokens (by jti = payload_b64 prefix) with expiry.
 # Uses a compact set; expired entries are pruned on each revocation write.
 _TOKEN_DENYLIST: dict[str, float] = {}  # token_key -> exp epoch
+_TOKEN_DENYLIST_STORE_KEY = "auth.revoked_user_token_exp"
+_TOKEN_DENYLIST_LOADED = False
 
 # ---------------------------------------------------------------------------
 # App
@@ -514,8 +516,31 @@ def _make_token(
     return f"{payload_b64}.{sig}"
 
 
+def _load_token_denylist_if_needed() -> None:
+    global _TOKEN_DENYLIST_LOADED
+    if _TOKEN_DENYLIST_LOADED:
+        return
+    now = int(time.time())
+    raw = SECURE_STORE.get_json(_TOKEN_DENYLIST_STORE_KEY, {})
+    if isinstance(raw, dict):
+        for token_key, exp in raw.items():
+            try:
+                exp_int = int(exp)
+            except Exception:
+                continue
+            if exp_int > now:
+                _TOKEN_DENYLIST[str(token_key)] = float(exp_int)
+    _TOKEN_DENYLIST_LOADED = True
+
+
+def _persist_token_denylist() -> None:
+    payload = {token_key: int(exp) for token_key, exp in _TOKEN_DENYLIST.items()}
+    SECURE_STORE.set_json(_TOKEN_DENYLIST_STORE_KEY, payload)
+
+
 def _decode_token(token: str) -> dict[str, Any] | None:
     try:
+        _load_token_denylist_if_needed()
         payload_b64, sig = token.split(".", 1)
         expected_sig = hmac.new(AUTH_TOKEN_SECRET.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(sig, expected_sig):
@@ -538,6 +563,7 @@ def _decode_token(token: str) -> dict[str, Any] | None:
 def _revoke_token(token: str) -> None:
     """Add a token's key to the denylist. Prune expired entries."""
     try:
+        _load_token_denylist_if_needed()
         payload_b64, _ = token.split(".", 1)
         payload = json.loads(_b64url_decode(payload_b64).decode())
         exp = int(payload.get("exp", 0))
@@ -546,9 +572,11 @@ def _revoke_token(token: str) -> None:
         expired_keys = [k for k, v in _TOKEN_DENYLIST.items() if v < now]
         for k in expired_keys:
             del _TOKEN_DENYLIST[k]
-        if exp > now:
+        is_agent_token = payload.get("type") == "agent"
+        if exp > now and not is_agent_token:
             _TOKEN_DENYLIST[payload_b64] = exp
-        if payload.get("type") == "agent":
+        _persist_token_denylist()
+        if is_agent_token:
             token_id = str(payload.get("jti") or "").strip()
             if token_id:
                 REVOKED_AGENT_TOKEN_IDS.add(token_id)

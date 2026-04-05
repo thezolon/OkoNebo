@@ -34,6 +34,7 @@ class SetupAuthIntegrationTests(unittest.TestCase):
             "AUTH_TOKEN_SECRET": main.AUTH_TOKEN_SECRET,
             "FIRST_RUN_COMPLETE": main.FIRST_RUN_COMPLETE,
             "_TOKEN_DENYLIST": copy.deepcopy(main._TOKEN_DENYLIST),
+            "_TOKEN_DENYLIST_LOADED": main._TOKEN_DENYLIST_LOADED,
             "_LOGIN_ATTEMPT_BUCKETS": copy.deepcopy(main._LOGIN_ATTEMPT_BUCKETS),
             # Capture env var state so _apply_config doesn't pick up production .env
             "_env_AUTH_ENABLED": os.environ.pop("AUTH_ENABLED", None),
@@ -56,6 +57,7 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         main.AUTH_ENABLED = False
         main.AUTH_REQUIRE_VIEWER_LOGIN = False
         main._TOKEN_DENYLIST.clear()
+        main._TOKEN_DENYLIST_LOADED = False
         main._LOGIN_ATTEMPT_BUCKETS.clear()
 
         self.client = TestClient(main.app, raise_server_exceptions=False)
@@ -70,6 +72,7 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         main.FIRST_RUN_COMPLETE = self._orig["FIRST_RUN_COMPLETE"]
         main._TOKEN_DENYLIST.clear()
         main._TOKEN_DENYLIST.update(self._orig["_TOKEN_DENYLIST"])
+        main._TOKEN_DENYLIST_LOADED = self._orig["_TOKEN_DENYLIST_LOADED"]
         main._LOGIN_ATTEMPT_BUCKETS.clear()
         main._LOGIN_ATTEMPT_BUCKETS.update(self._orig["_LOGIN_ATTEMPT_BUCKETS"])
         # Restore env vars removed in setUp
@@ -140,6 +143,30 @@ class SetupAuthIntegrationTests(unittest.TestCase):
 
         logout = self.client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(logout.status_code, 200)
+
+        me_after = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(me_after.status_code, 401)
+
+    def test_user_token_revocation_survives_restart_reload(self):
+        main.AUTH_ENABLED = True
+        main.AUTH_REQUIRE_VIEWER_LOGIN = True
+        main.AUTH_TOKEN_SECRET = "integration-secret"
+        main.AUTH_USERS = [{"username": "admin", "password_hash": main._hash_password("secret123"), "role": "admin"}]
+
+        login = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "secret123"},
+        )
+        self.assertEqual(login.status_code, 200, login.text)
+        token = login.json().get("token")
+        self.assertTrue(token)
+
+        logout = self.client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(logout.status_code, 200)
+
+        # Simulate restart: clear in-memory denylist and force reload from SECURE_STORE.
+        main._TOKEN_DENYLIST.clear()
+        main._TOKEN_DENYLIST_LOADED = False
 
         me_after = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(me_after.status_code, 401)
