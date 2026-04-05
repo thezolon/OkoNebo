@@ -57,10 +57,15 @@ def main() -> int:
     ensure(has_id(html, "viewer-help-toolbar-btn"), "Missing toolbar help button on dashboard")
 
     forecast_pos = html.find('id="forecast-section"')
+    compare_pos = html.find('id="multi-current-section"')
     debug_pos = html.find('id="debug-section"')
+    pws_pos = html.find('id="pws-section"')
     ensure(forecast_pos != -1, "Missing 7-day forecast section")
+    ensure(compare_pos != -1, "Missing location compare section")
+    ensure(pws_pos != -1, "Missing PWS section")
     ensure(debug_pos != -1, "Missing system status section")
     ensure(forecast_pos < debug_pos, "7-day forecast section must appear before system status")
+    ensure(forecast_pos < compare_pos < pws_pos, "Location compare section must appear between forecast and PWS")
 
     for required_id in [
         "compact-panel-layout-btn",

@@ -42,6 +42,7 @@ const AUTH_TOKEN_STORAGE_KEY = 'weatherapp.auth.token';
 const cache = {
     config: null,
     current: null,
+    multiCurrent: null,
     forecast: [],
     hourly: [],
     alerts: [],
@@ -1863,6 +1864,73 @@ async function renderCurrent(forceFetch = false) {
     renderTimeline();
 }
 
+async function renderMultiCurrent(forceFetch = false) {
+    if (forceFetch || !cache.config) cache.config = await fetchAPIDeduped('/config');
+
+    const section = document.getElementById('multi-current-section');
+    const cards = document.getElementById('multi-current-cards');
+    const count = document.getElementById('multi-current-count');
+    const locations = getAlertLocations();
+
+    if (locations.length <= 1) {
+        section.style.display = 'none';
+        cards.innerHTML = '';
+        count.textContent = '';
+        return;
+    }
+
+    section.style.display = '';
+    count.textContent = String(locations.length);
+
+    if (forceFetch || !cache.multiCurrent) cache.multiCurrent = await fetchAPIDeduped('/current/multi');
+    const entries = Array.isArray(cache.multiCurrent?.locations) ? cache.multiCurrent.locations : [];
+    cards.innerHTML = '';
+
+    if (entries.length === 0) {
+        cards.innerHTML = '<div class="multi-current-card is-error"><div class="multi-current-error">No comparison data available.</div></div>';
+        return;
+    }
+
+    const primary = entries.find((entry) => entry?.ok && entry?.current) || null;
+    const primaryTemp = toNumber(primary?.current?.temp_f);
+
+    entries.forEach((entry) => {
+        const current = entry?.current || {};
+        const entryTemp = toNumber(current.temp_f);
+        const tempDelta = entryTemp != null && primaryTemp != null ? entryTemp - primaryTemp : null;
+        const compareText = entry?.role === 'primary'
+            ? 'Primary monitored location'
+            : tempDelta == null
+                ? 'Comparison unavailable'
+                : `${signed(tempDelta, 0)} vs ${primary?.label || 'primary'}`;
+        const card = document.createElement('div');
+        card.className = `multi-current-card${entry?.ok ? '' : ' is-error'}`;
+        card.innerHTML = `
+            <div class="multi-current-head">
+                <div class="multi-current-name">${escapeHtml(entry?.label || 'Location')}</div>
+                <div class="multi-current-updated">${current.timestamp ? `Updated ${formatTime(current.timestamp)}` : '--'}</div>
+            </div>
+            <div class="multi-current-temp-row">
+                <div class="multi-current-temp">${entry?.ok ? displayTemp(current.temp_f) : '--'}</div>
+                <div class="multi-current-source">${escapeHtml((current.source || '--').toUpperCase())}</div>
+            </div>
+            <div class="multi-current-desc">${escapeHtml(entry?.ok ? (current.description || '--') : 'Unavailable')}</div>
+            <div class="multi-current-compare">${escapeHtml(compareText)}</div>
+            ${entry?.ok ? `
+                <div class="multi-current-grid">
+                    <div><div class="pws-k">Feels</div><div class="pws-v">${displayTemp(current.feels_like_f)}</div></div>
+                    <div><div class="pws-k">Wind</div><div class="pws-v">${displayWind(current.wind_speed_mph)}</div></div>
+                    <div><div class="pws-k">Humidity</div><div class="pws-v">${current.humidity != null ? `${Math.round(current.humidity)}%` : '--'}</div></div>
+                    <div><div class="pws-k">Pressure</div><div class="pws-v">${displayPressure(current.pressure_inhg)}</div></div>
+                    <div><div class="pws-k">Visibility</div><div class="pws-v">${current.visibility_miles != null ? displayDist(current.visibility_miles) : '--'}</div></div>
+                    <div><div class="pws-k">Station</div><div class="pws-v">${escapeHtml(current.station || '--')}</div></div>
+                </div>`
+                : `<div class="multi-current-error">${escapeHtml(entry?.error || 'Current conditions unavailable')}</div>`}
+        `;
+        cards.appendChild(card);
+    });
+}
+
 function resetRadarView() {
     if (!radarMap || !cache.config) return;
     fitMapToAlertCoverage();
@@ -3365,6 +3433,7 @@ async function loadAll(forceFetch = false) {
     const tasks = [
         renderHeader(forceFetch),
         renderCurrent(forceFetch),
+        renderMultiCurrent(forceFetch),
         renderForecast(forceFetch),
         renderHourly(forceFetch),
         renderAlerts(forceFetch),
@@ -3374,7 +3443,7 @@ async function loadAll(forceFetch = false) {
         initRadar(),
     ];
 
-    const sectionNames = ['header', 'current', 'forecast', 'hourly', 'alerts', 'pws', 'astro', 'aqi', 'radar'];
+    const sectionNames = ['header', 'current', 'multi-current', 'forecast', 'hourly', 'alerts', 'pws', 'astro', 'aqi', 'radar'];
     const nwsResults = await Promise.allSettled(tasks);
 
     try {

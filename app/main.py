@@ -123,6 +123,7 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
     "/api/config": "config.read",
     "/api/bootstrap": "config.read",
     "/api/current": "weather.read",
+    "/api/current/multi": "weather.read",
     "/api/forecast": "weather.read",
     "/api/hourly": "weather.read",
     "/api/alerts": "weather.read",
@@ -1363,6 +1364,7 @@ async def api_capabilities():
             {"name": "get_config", "endpoint": "/api/config", "scope": "config.read"},
             {"name": "get_bootstrap", "endpoint": "/api/bootstrap", "scope": "config.read"},
             {"name": "get_current", "endpoint": "/api/current", "scope": "weather.read"},
+            {"name": "get_current_multi", "endpoint": "/api/current/multi", "scope": "weather.read"},
             {"name": "get_forecast", "endpoint": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "endpoint": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "endpoint": "/api/alerts", "scope": "weather.read"},
@@ -1409,6 +1411,7 @@ async def api_agent_profile(request: Request):
         },
         "tools": [
             {"name": "get_current", "method": "GET", "path": "/api/current", "scope": "weather.read"},
+            {"name": "get_current_multi", "method": "GET", "path": "/api/current/multi", "scope": "weather.read"},
             {"name": "get_forecast", "method": "GET", "path": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "method": "GET", "path": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "method": "GET", "path": "/api/alerts", "scope": "weather.read"},
@@ -1633,6 +1636,123 @@ async def api_config():
     }
 
 
+async def _current_payload_for_location(lat: float, lon: float) -> dict[str, Any]:
+    attempted: list[str] = []
+    provider_errors: dict[str, str] = {}
+
+    if PROVIDERS.get("nws", {}).get("enabled"):
+        payload = await _provider_attempt("current", "nws", lambda: wc.get_current(lat, lon, USER_AGENT), attempted, provider_errors)
+        if payload is not None:
+            return payload
+
+    if PROVIDERS.get("weatherapi", {}).get("enabled"):
+        weatherapi_key = _provider_api_key("weatherapi")
+        if weatherapi_key:
+            payload = await _provider_attempt("current", "weatherapi", lambda: wc.get_weatherapi_current(lat, lon, weatherapi_key), attempted, provider_errors)
+            if payload is not None:
+                return payload
+
+    if PROVIDERS.get("tomorrow", {}).get("enabled"):
+        tomorrow_key = _provider_api_key("tomorrow")
+        if tomorrow_key:
+            payload = await _provider_attempt("current", "tomorrow", lambda: wc.get_tomorrow_current(lat, lon, tomorrow_key), attempted, provider_errors)
+            if payload is not None:
+                return payload
+
+    if PROVIDERS.get("visualcrossing", {}).get("enabled"):
+        visualcrossing_key = _provider_api_key("visualcrossing")
+        if visualcrossing_key:
+            payload = await _provider_attempt("current", "visualcrossing", lambda: wc.get_visualcrossing_current(lat, lon, visualcrossing_key), attempted, provider_errors)
+            if payload is not None:
+                return payload
+
+    if PROVIDERS.get("meteomatics", {}).get("enabled"):
+        meteomatics_key = _provider_api_key("meteomatics")
+        if meteomatics_key and ":" in meteomatics_key:
+            payload = await _provider_attempt("current", "meteomatics", lambda: wc.get_meteomatics_current(lat, lon, meteomatics_key), attempted, provider_errors)
+            if payload is not None:
+                return payload
+
+    details = {
+        "detail": "No enabled/working current-conditions provider",
+        "attempted": attempted,
+        "errors": provider_errors,
+    }
+    raise HTTPException(status_code=502, detail=details)
+
+
+@app.get(
+    "/api/current/multi",
+    summary="Current observations for monitored locations",
+    description=(
+        "Returns current conditions for each configured monitored location. "
+        "Each location is resolved independently so partial failures still return "
+        "successful entries for the remaining locations."
+    ),
+    tags=["Weather"],
+)
+async def api_current_multi():
+    raw_locations = ALERT_LOCATIONS or [{"lat": LAT, "lon": LON, "label": LABEL}]
+
+    async def _fetch_location(index: int, location: dict[str, Any]) -> dict[str, Any]:
+        label = str(location.get("label") or ("Home" if index == 0 else f"Location {index + 1}"))
+        try:
+            loc_lat = float(location.get("lat"))
+            loc_lon = float(location.get("lon"))
+        except Exception:
+            return {
+                "label": label,
+                "role": "primary" if index == 0 else "secondary",
+                "lat": location.get("lat"),
+                "lon": location.get("lon"),
+                "ok": False,
+                "current": None,
+                "error": "Invalid monitored location coordinates",
+            }
+
+        try:
+            current = await _current_payload_for_location(loc_lat, loc_lon)
+            return {
+                "label": label,
+                "role": "primary" if index == 0 else "secondary",
+                "lat": loc_lat,
+                "lon": loc_lon,
+                "ok": True,
+                "current": current,
+                "error": None,
+            }
+        except HTTPException as exc:
+            detail = exc.detail
+            if isinstance(detail, dict):
+                error_text = str(detail.get("detail") or "Current conditions unavailable")
+            else:
+                error_text = str(detail or "Current conditions unavailable")
+            return {
+                "label": label,
+                "role": "primary" if index == 0 else "secondary",
+                "lat": loc_lat,
+                "lon": loc_lon,
+                "ok": False,
+                "current": None,
+                "error": error_text,
+                "provider_detail": detail,
+            }
+
+    locations = await asyncio.gather(*[
+        _fetch_location(index, location if isinstance(location, dict) else {})
+        for index, location in enumerate(raw_locations)
+    ])
+    success_count = sum(1 for location in locations if location.get("ok"))
+
+    return {
+        "locations": locations,
+        "requested_count": len(locations),
+        "success_count": success_count,
+        "failure_count": len(locations) - success_count,
+        "updated_at": time.time(),
+    }
+
+
 @app.get(
     "/api/current",
     summary="Current surface observations",
@@ -1644,48 +1764,7 @@ async def api_config():
     tags=["Weather"],
 )
 async def api_current():
-    attempted: list[str] = []
-    provider_errors: dict[str, str] = {}
-
-    if PROVIDERS.get("nws", {}).get("enabled"):
-        payload = await _provider_attempt("current", "nws", lambda: wc.get_current(LAT, LON, USER_AGENT), attempted, provider_errors)
-        if payload is not None:
-            return payload
-
-    if PROVIDERS.get("weatherapi", {}).get("enabled"):
-        weatherapi_key = _provider_api_key("weatherapi")
-        if weatherapi_key:
-            payload = await _provider_attempt("current", "weatherapi", lambda: wc.get_weatherapi_current(LAT, LON, weatherapi_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
-
-    if PROVIDERS.get("tomorrow", {}).get("enabled"):
-        tomorrow_key = _provider_api_key("tomorrow")
-        if tomorrow_key:
-            payload = await _provider_attempt("current", "tomorrow", lambda: wc.get_tomorrow_current(LAT, LON, tomorrow_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
-
-    if PROVIDERS.get("visualcrossing", {}).get("enabled"):
-        visualcrossing_key = _provider_api_key("visualcrossing")
-        if visualcrossing_key:
-            payload = await _provider_attempt("current", "visualcrossing", lambda: wc.get_visualcrossing_current(LAT, LON, visualcrossing_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
-
-    if PROVIDERS.get("meteomatics", {}).get("enabled"):
-        meteomatics_key = _provider_api_key("meteomatics")
-        if meteomatics_key and ":" in meteomatics_key:
-            payload = await _provider_attempt("current", "meteomatics", lambda: wc.get_meteomatics_current(LAT, LON, meteomatics_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
-
-    details = {
-        "detail": "No enabled/working current-conditions provider",
-        "attempted": attempted,
-        "errors": provider_errors,
-    }
-    raise HTTPException(status_code=502, detail=details)
+    return await _current_payload_for_location(LAT, LON)
 
 
 @app.get(

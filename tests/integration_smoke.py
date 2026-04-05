@@ -52,6 +52,17 @@ def main() -> int:
             ensure("source" in payload, "current payload must include source")
             ensure("temp_f" in payload, "current payload must include temp_f")
 
+    def check_current_multi() -> None:
+        status, payload = fetch_json("/api/current/multi")
+        ensure(status == 200, f"current/multi status must be 200, got {status}")
+        ensure(isinstance(payload, dict), "current/multi payload must be object")
+        ensure(isinstance(payload.get("locations"), list), "current/multi must include locations array")
+        ensure("success_count" in payload and "failure_count" in payload, "current/multi must include summary counts")
+        if payload["locations"]:
+            first = payload["locations"][0]
+            ensure(isinstance(first, dict), "current/multi location must be object")
+            ensure("label" in first and "ok" in first, "current/multi location must include label and ok")
+
     def check_forecast() -> None:
         status, payload = fetch_json("/api/forecast")
         ensure(status in (200, 502), f"forecast status must be 200 or 502, got {status}")
@@ -115,6 +126,7 @@ def main() -> int:
     checks.extend([
         ("/api/config", check_config),
         ("/api/current", check_current),
+        ("/api/current/multi", check_current_multi),
         ("/api/forecast", check_forecast),
         ("/api/hourly", check_hourly),
         ("/api/bootstrap", check_bootstrap),

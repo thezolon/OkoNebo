@@ -1053,6 +1053,81 @@ html.admin-page body.admin-page {
     gap: 6px;
 }
 
+.multi-current-cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+.multi-current-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px;
+}
+
+.multi-current-card.is-error {
+    border-color: rgba(240, 82, 82, 0.45);
+}
+
+.multi-current-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.multi-current-name {
+    font-size: 11px;
+    color: var(--t2);
+    font-weight: 700;
+}
+
+.multi-current-updated {
+    font-size: 9px;
+    color: var(--t3);
+}
+
+.multi-current-temp-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.multi-current-temp {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--t1);
+}
+
+.multi-current-source {
+    font-size: 10px;
+    color: var(--t3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.multi-current-desc,
+.multi-current-compare,
+.multi-current-error {
+    font-size: 10px;
+    color: var(--t2);
+    margin-bottom: 4px;
+}
+
+.multi-current-error {
+    color: #f87171;
+}
+
+.multi-current-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+}
+
 .pws-cards {
     display: grid;
     grid-template-columns: 1fr;
