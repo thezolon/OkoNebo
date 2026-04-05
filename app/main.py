@@ -355,9 +355,8 @@ def _apply_config(cfg: dict[str, Any]) -> None:
             AUTH_USERS.append(match)
         match["username"] = username
         match["role"] = role
-        # Runtime env bootstrap supports plaintext fallback for first login.
-        match["password"] = password
-        match.pop("password_hash", None)
+        match["password_hash"] = _hash_password(password)
+        match.pop("password", None)
 
     _upsert_env_user("admin", env_admin_username, env_admin_password)
     _upsert_env_user("viewer", env_viewer_username, env_viewer_password)
@@ -365,7 +364,7 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     AUTH_TOKEN_SECRET = str(
         os.getenv("AUTH_TOKEN_SECRET")
         or auth_cfg.get("token_secret")
-        or "dev-okonebo-secret"
+        or secrets.token_hex(32)
     )
     AGENT_TOKENS = list(SECURE_STORE.get_json("auth.agent_tokens", []) or [])
     REVOKED_AGENT_TOKEN_IDS = set(
@@ -470,15 +469,15 @@ def _hash_password(password: str, salt: str | None = None) -> str:
 
 
 def _verify_password(password: str, stored: str) -> bool:
-    if stored.startswith("pbkdf2_sha256$"):
-        try:
-            _, rounds_s, salt, expected_hex = stored.split("$", 3)
-            rounds = int(rounds_s)
-            digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), rounds).hex()
-            return hmac.compare_digest(digest, expected_hex)
-        except Exception:
-            return False
-    return hmac.compare_digest(password, stored)
+    if not stored.startswith("pbkdf2_sha256$"):
+        return False
+    try:
+        _, rounds_s, salt, expected_hex = stored.split("$", 3)
+        rounds = int(rounds_s)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), rounds).hex()
+        return hmac.compare_digest(digest, expected_hex)
+    except Exception:
+        return False
 
 
 def _find_user(username: str) -> dict[str, Any] | None:
@@ -870,8 +869,15 @@ async def api_auth_login(payload: dict[str, Any] = Body(...), request: Request =
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    stored = str(user.get("password_hash") or user.get("password") or "")
-    if not stored or not _verify_password(password, stored):
+    stored_hash = str(user.get("password_hash") or "")
+    if not stored_hash:
+        legacy_plain = str(user.get("password") or "")
+        if legacy_plain and hmac.compare_digest(password, legacy_plain):
+            stored_hash = _hash_password(password)
+            user["password_hash"] = stored_hash
+            user.pop("password", None)
+            SECURE_STORE.set_json("auth.users", AUTH_USERS)
+    if not stored_hash or not _verify_password(password, stored_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     role = str(user.get("role") or "viewer")
