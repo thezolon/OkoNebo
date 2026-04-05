@@ -92,7 +92,7 @@ PROVIDER_META: dict[str, dict[str, Any]] = {
 
 PROVIDER_CAPABILITIES: dict[str, list[str]] = {
     "nws": ["current", "forecast", "hourly", "alerts"],
-    "openweather": ["owm_onecall", "tiles"],
+    "openweather": ["owm_onecall", "tiles", "aqi"],
     "pws": ["pws_current", "pws_trend"],
     "tomorrow": ["current", "forecast", "hourly"],
     "meteomatics": ["current"],
@@ -113,7 +113,7 @@ PROVIDER_KEY_ENV = {
 }
 
 AGENT_SCOPE_DEFINITIONS: dict[str, str] = {
-    "weather.read": "Read weather observations, forecasts, alerts, METAR, tides, and PWS feeds",
+    "weather.read": "Read weather observations, forecasts, alerts, METAR, tides, AQI, and PWS feeds",
     "config.read": "Read bootstrap/config metadata",
     "stats.read": "Read upstream provider call counters",
     "debug.read": "Read debug telemetry payload",
@@ -128,6 +128,7 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
     "/api/alerts": "weather.read",
     "/api/metar": "weather.read",
     "/api/tides": "weather.read",
+    "/api/aqi": "weather.read",
     "/api/owm": "weather.read",
     "/api/pws": "weather.read",
     "/api/pws/trend": "weather.read",
@@ -425,6 +426,11 @@ _TOKEN_DENYLIST_STORE_KEY = "auth.revoked_user_token_exp"
 _TOKEN_DENYLIST_LOADED = False
 _ASTRO_CACHE: dict[str, Any] = {"expires_at": 0, "key": None, "payload": None}
 _ASTRO_CACHE_TTL_SECONDS = 21600
+
+# Webhook state: stored in secure_settings, fired on threat-level transitions
+_LAST_THREAT_LEVEL: str = "default"
+_WEBHOOK_DELIVERY_STATS: dict[str, int] = {"sent": 0, "failed": 0}
+_WEBHOOK_STORE_KEY = "webhooks.config"
 
 # ---------------------------------------------------------------------------
 # App
@@ -900,6 +906,69 @@ async def api_auth_guard(request: Request, call_next):
 
     return await call_next(request)
 
+
+def _load_webhooks() -> list[dict[str, Any]]:
+    """Load webhook list from secure store."""
+    return SECURE_STORE.get_json(_WEBHOOK_STORE_KEY, [])
+
+
+def _save_webhooks(webhooks: list[dict[str, Any]]) -> None:
+    """Persist webhook list to secure store."""
+    SECURE_STORE.set_json(_WEBHOOK_STORE_KEY, webhooks)
+
+
+async def _fire_webhook(url: str, payload: dict[str, Any]) -> None:
+    """POST webhook payload with timeout and no retries (best-effort)."""
+    _WEBHOOK_DELIVERY_STATS["sent"] += 1
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            _log_event("webhook.sent", None, url=url, status=response.status_code)
+    except Exception as exc:
+        _WEBHOOK_DELIVERY_STATS["failed"] += 1
+        _log_event("webhook.failed", None, level="warning", url=url, error=str(exc))
+
+
+async def _check_threat_transition_and_fire_webhooks(current_alerts: list[dict]) -> None:
+    """Detect threat level change and fire configured webhooks."""
+    global _LAST_THREAT_LEVEL
+    
+    # Compute current threat level
+    current_threat = "default"
+    if current_alerts:
+        has_active = any(a.get("status") == "active" for a in current_alerts)
+        current_threat = "active" if has_active else "approaching"
+    
+    # Check if transition occurred
+    if current_threat == _LAST_THREAT_LEVEL:
+        return
+    
+    _LAST_THREAT_LEVEL = current_threat
+    webhooks = _load_webhooks()
+    
+    # Fire webhooks with transition info
+    payload = {
+        "event": "threat_level_transition",
+        "previous_level": _LAST_THREAT_LEVEL,
+        "current_level": current_threat,
+        "timestamp": int(time.time()),
+        "location": {
+            "lat": LAT,
+            "lon": LON,
+            "label": LABEL,
+            "timezone": TIMEZONE,
+        },
+        "alert_count": len(current_alerts),
+    }
+    
+    for webhook in webhooks:
+        if webhook.get("enabled"):
+            try:
+                await _fire_webhook(webhook["url"], payload)
+            except Exception as exc:
+                LOGGER.warning(f"Webhook delivery error for {webhook['url']}: {exc}")
+
 # ---------------------------------------------------------------------------
 # API routes
 # ---------------------------------------------------------------------------
@@ -1002,6 +1071,121 @@ async def api_auth_me(request: Request):
         "role": identity.get("role"),
         "exp": identity.get("exp"),
     }
+
+
+@app.get(
+    "/api/webhooks",
+    summary="List configured webhooks",
+    description="Returns list of configured webhook URLs (masked). Admin-only.",
+    tags=["Integrations"],
+)
+async def api_webhooks_get(request: Request):
+    _require_admin_identity(request)
+    webhooks = _load_webhooks()
+    return {
+        "webhooks": [
+            {
+                "id": wh.get("id"),
+                "url": wh.get("url", "")[: 50] + "..." if len(wh.get("url", "")) > 50 else wh.get("url"),
+                "enabled": wh.get("enabled", True),
+                "created_at": wh.get("created_at"),
+            }
+            for wh in webhooks
+        ],
+        "stats": dict(_WEBHOOK_DELIVERY_STATS),
+    }
+
+
+@app.post(
+    "/api/webhooks",
+    summary="Add webhook",
+    description=(
+        "Create a new webhook that fires on threat-level transitions "
+        "(default->approaching, approaching->active, or back to default). "
+        "Payload includes event, previous/current level, timestamp, and alert count. "
+        "Admin-only."
+    ),
+    tags=["Integrations"],
+)
+async def api_webhooks_post(request: Request, payload: dict[str, Any] = Body(...)):
+    _require_admin_identity(request)
+    
+    url = str(payload.get("url", "")).strip()
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Valid http(s) URL required")
+    if len(url) > 512:
+        raise HTTPException(status_code=400, detail="URL must be <= 512 characters")
+    
+    webhooks = _load_webhooks()
+    webhook_id = secrets.token_hex(8)
+    webhooks.append({
+        "id": webhook_id,
+        "url": url,
+        "enabled": True,
+        "created_at": int(time.time()),
+    })
+    _save_webhooks(webhooks)
+    
+    _log_event("webhook.created", request, webhook_id=webhook_id, url=url)
+    
+    return {
+        "id": webhook_id,
+        "url": url,
+        "enabled": True,
+        "created_at": int(time.time()),
+    }
+
+
+@app.post(
+    "/api/webhooks/{webhook_id}/test",
+    summary="Test webhook delivery",
+    description="Send a test payload to validate webhook setup. Admin-only.",
+    tags=["Integrations"],
+)
+async def api_webhooks_test(request: Request, webhook_id: str):
+    _require_admin_identity(request)
+    
+    webhooks = _load_webhooks()
+    webhook = next((w for w in webhooks if w.get("id") == webhook_id), None)
+    if not webhook:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    
+    test_payload = {
+        "event": "webhook_test",
+        "timestamp": int(time.time()),
+        "location": {
+            "lat": LAT,
+            "lon": LON,
+            "label": LABEL,
+        },
+        "message": "This is a webhook test payload",
+    }
+    
+    try:
+        await _fire_webhook(webhook["url"], test_payload)
+        return {"status": "test_sent", "webhook_id": webhook_id}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Test delivery failed: {exc}") from exc
+
+
+@app.delete(
+    "/api/webhooks/{webhook_id}",
+    summary="Delete webhook",
+    description="Remove a configured webhook. Admin-only.",
+    tags=["Integrations"],
+)
+async def api_webhooks_delete(request: Request, webhook_id: str):
+    _require_admin_identity(request)
+    
+    webhooks = _load_webhooks()
+    removed = [w for w in webhooks if w.get("id") != webhook_id]
+    if len(removed) == len(webhooks):
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    
+    _save_webhooks(removed)
+    _log_event("webhook.deleted", request, webhook_id=webhook_id)
+    
+    return {"status": "deleted", "webhook_id": webhook_id}
 
 
 def _require_admin_identity(request: Request) -> dict[str, Any]:
@@ -1502,6 +1686,47 @@ async def api_astro():
 
 
 @app.get(
+    "/api/aqi",
+    summary="Air Quality Index data",
+    description=(
+        "Air quality data for the configured location from OpenWeatherMap. "
+        "Returns AQI (1-5), pollutant concentrations, and timestamp. "
+        "Cached 30 minutes. Requires OWM API key; gracefully unavailable if not configured."
+    ),
+    tags=["Weather"],
+)
+async def api_aqi():
+    if not PROVIDERS.get("openweather", {}).get("enabled") or not OWM_KEY:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "available": False,
+                "error": "OWM not configured",
+                "aqi": None,
+                "components": {},
+                "timestamp": None,
+            },
+        )
+    try:
+        result = await wc.get_owm_aqi(LAT, LON, OWM_KEY)
+        result["available"] = True
+        return result
+    except Exception as exc:
+        # Graceful fallback: AQI not critical
+        LOGGER.warning(f"AQI fetch failed: {exc}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "available": False,
+                "error": str(exc),
+                "aqi": None,
+                "components": {},
+                "timestamp": None,
+            },
+        )
+
+
+@app.get(
     "/api/tides",
     summary="NOAA tide predictions",
     description=(
@@ -1538,7 +1763,11 @@ async def api_tides(days: int = Query(default=2, ge=1, le=7)):
 )
 async def api_alerts():
     try:
-        return await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
+        alerts = await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
+        # Check for threat level transitions and fire webhooks
+        alert_list = alerts.get("alerts", []) if isinstance(alerts, dict) else alerts
+        await _check_threat_transition_and_fire_webhooks(alert_list)
+        return alerts
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

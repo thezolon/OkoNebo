@@ -1568,6 +1568,48 @@ async def get_owm_onecall(lat: float, lon: float, api_key: str) -> dict:
     return await _get_or_refresh_shared(key, cache_type="owm_onecall", ttl=600, producer=_producer)
 
 
+async def get_owm_aqi(lat: float, lon: float, api_key: str) -> dict:
+    """
+    OpenWeather Air Quality endpoint — AQI index, pollutants, source.
+    Cached 30 minutes. API key is never included in the returned payload.
+    """
+    if not api_key:
+        raise ValueError("OWM API key not configured")
+
+    key = f"aqi_owm:{lat},{lon}"
+
+    async def _producer() -> dict:
+        data = await _owm_get(
+            f"{OWM_BASE}/air_pollution",
+            {
+                "lat": lat,
+                "lon": lon,
+                "appid": api_key,
+            },
+        )
+        # List structure; return latest (most recent) air quality reading
+        list_data = data.get("list", [])
+        if not list_data:
+            return {
+                "aqi": None,
+                "main": None,
+                "components": {},
+                "timestamp": None,
+                "available": False,
+            }
+        latest = list_data[0]
+        main = latest.get("main", {}) or {}
+        return {
+            "aqi": main.get("aqi"),  # 1-5
+            "main": main.get("aqi"),
+            "components": latest.get("components", {}),
+            "timestamp": latest.get("dt"),
+            "available": True,
+        }
+
+    return await _get_or_refresh_shared(key, cache_type="aqi_owm", ttl=1800, producer=_producer)
+
+
 # ---------------------------------------------------------------------------
 # Personal Weather Station (Weather.com / WUnderground style)
 # ---------------------------------------------------------------------------

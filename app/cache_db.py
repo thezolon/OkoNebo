@@ -44,6 +44,7 @@ DEFAULT_TTL = {
     "owm_onecall": 600,
     "pws_current": 120,
     "pws_trend": 300,
+    "aqi_owm": 1800,
 }
 
 # Shortened TTLs when storms are approaching or active
@@ -79,6 +80,7 @@ STORM_APPROACHING_TTL = {
     "owm_onecall": 300,
     "pws_current": 120,
     "pws_trend": 240,
+    "aqi_owm": 900,
 }
 
 # Aggressive TTLs during active storms or storm mode
@@ -107,6 +109,7 @@ ACTIVE_STORM_TTL = {
     "current_visualcrossing": 180,
     "forecast_visualcrossing": 300,
     "hourly_visualcrossing": 300,
+    "aqi_owm": 600,
 
     "current_meteomatics": 180,
     "current_aviationweather": 600,

@@ -49,6 +49,7 @@ const cache = {
     pws: null,
     pwsTrend: null,
     astro: null,
+    aqi: null,
     currentSources: [],
 };
 
@@ -1979,6 +1980,32 @@ async function renderAstro(forceFetch = false) {
     document.getElementById('astro-moon-illum').textContent = astro.moon_illumination != null ? `${astro.moon_illumination}%` : '--';
 }
 
+async function renderAqi(forceFetch = false) {
+    if (forceFetch || !cache.aqi) cache.aqi = await fetchAPIDeduped('/aqi');
+    const aqi = cache.aqi || {};
+
+    if (!aqi.available) {
+        document.getElementById('aqi-section').style.display = 'none';
+        return;
+    }
+
+    document.getElementById('aqi-section').style.display = '';
+    const aqiIndex = aqi.aqi || '--';
+    const aqiColors = {1: '#2ecc71', 2: '#f1c40f', 3: '#e67e22', 4: '#e74c3c', 5: '#8b0000'};
+    const aqiLabels = {1: 'Good', 2: 'Fair', 3: 'Moderate', 4: 'Poor', 5: 'Very Poor'};
+
+    document.getElementById('aqi-badge').textContent = aqiIndex;
+    document.getElementById('aqi-badge').style.backgroundColor = aqiColors[aqiIndex] || '#ccc';
+    document.getElementById('aqi-index').textContent = aqiIndex;
+    document.getElementById('aqi-category').textContent = aqiLabels[aqiIndex] || '--';
+
+    const components = aqi.components || {};
+    document.getElementById('aqi-pm25').textContent = components.pm2_5 != null ? `${Math.round(components.pm2_5)} µg/m³` : '--';
+    document.getElementById('aqi-pm10').textContent = components.pm10 != null ? `${Math.round(components.pm10)} µg/m³` : '--';
+    document.getElementById('aqi-no2').textContent = components.no2 != null ? `${Math.round(components.no2)} ppb` : '--';
+    document.getElementById('aqi-o3').textContent = components.o3 != null ? `${Math.round(components.o3)} ppb` : '--';
+}
+
 async function renderPws(forceFetch = false) {
     if (forceFetch || !cache.pws) cache.pws = await fetchAPIDeduped('/pws');
     if (forceFetch || !cache.pwsTrend) cache.pwsTrend = await fetchAPIDeduped(`/pws/trend?hours=${state.pwsTrendHours}`);
@@ -3327,10 +3354,11 @@ async function loadAll(forceFetch = false) {
         renderAlerts(forceFetch),
         renderPws(forceFetch),
         renderAstro(forceFetch),
+        renderAqi(forceFetch),
         initRadar(),
     ];
 
-    const sectionNames = ['header', 'current', 'forecast', 'hourly', 'alerts', 'pws', 'astro', 'radar'];
+    const sectionNames = ['header', 'current', 'forecast', 'hourly', 'alerts', 'pws', 'astro', 'aqi', 'radar'];
     const nwsResults = await Promise.allSettled(tasks);
 
     try {

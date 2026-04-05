@@ -88,6 +88,15 @@ def main() -> int:
         ensure("sunrise" in payload and "sunset" in payload, "astro must include sunrise/sunset")
         ensure("moon_phase" in payload and "moon_illumination" in payload, "astro must include moon fields")
 
+    def check_aqi() -> None:
+        status, payload = fetch_json("/api/aqi")
+        ensure(status == 200, "aqi status must be 200")
+        ensure(isinstance(payload, dict), "aqi payload must be object")
+        # AQI may not be available if OWM is not configured, but endpoint should still return 200
+        if payload.get("available"):
+            ensure("aqi" in payload, "aqi payload must include aqi field")
+            ensure("components" in payload, "aqi payload must include components")
+
     checks.extend([
         ("/api/config", check_config),
         ("/api/current", check_current),
@@ -95,6 +104,7 @@ def main() -> int:
         ("/api/hourly", check_hourly),
         ("/api/bootstrap", check_bootstrap),
         ("/api/astro", check_astro),
+        ("/api/aqi", check_aqi),
     ])
 
     for name, fn in checks:
