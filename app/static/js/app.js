@@ -1984,12 +1984,20 @@ async function renderAqi(forceFetch = false) {
     if (forceFetch || !cache.aqi) cache.aqi = await fetchAPIDeduped('/aqi');
     const aqi = cache.aqi || {};
 
+    document.getElementById('aqi-section').style.display = '';
+
     if (!aqi.available) {
-        document.getElementById('aqi-section').style.display = 'none';
+        document.getElementById('aqi-badge').textContent = '--';
+        document.getElementById('aqi-badge').style.backgroundColor = '#4b5563';
+        document.getElementById('aqi-index').textContent = '--';
+        document.getElementById('aqi-category').textContent = 'Unavailable';
+        document.getElementById('aqi-pm25').textContent = '--';
+        document.getElementById('aqi-pm10').textContent = '--';
+        document.getElementById('aqi-no2').textContent = '--';
+        document.getElementById('aqi-o3').textContent = '--';
         return;
     }
 
-    document.getElementById('aqi-section').style.display = '';
     const aqiIndex = aqi.aqi || '--';
     const aqiColors = {1: '#2ecc71', 2: '#f1c40f', 3: '#e67e22', 4: '#e74c3c', 5: '#8b0000'};
     const aqiLabels = {1: 'Good', 2: 'Fair', 3: 'Moderate', 4: 'Poor', 5: 'Very Poor'};
