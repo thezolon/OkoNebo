@@ -1,6 +1,6 @@
 import unittest
 import time
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 
@@ -8,9 +8,10 @@ from app import weather_client as wc
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int, payload: dict):
+    def __init__(self, status_code: int, payload: dict, headers: dict[str, str] | None = None):
         self.status_code = status_code
         self._payload = payload
+        self.headers = headers or {}
         self.request = httpx.Request("GET", "https://example.test")
 
     def raise_for_status(self):
@@ -47,6 +48,7 @@ class _FakeClient:
 class WeatherClientTelemetryTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         wc.reset_runtime_telemetry()
+        await wc.close_http_clients()
 
     async def test_retry_stats_record_attempted_and_exhausted(self):
         responses = [
@@ -79,6 +81,41 @@ class WeatherClientTelemetryTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(stats.get("miss", 0), 1)
         self.assertGreaterEqual(stats.get("set", 0), 1)
         self.assertGreaterEqual(stats.get("memory_hit", 0), 1)
+
+    async def test_retry_after_header_is_respected_for_429(self):
+        responses = [
+            _FakeResponse(429, {"error": "rate"}, headers={"Retry-After": "2"}),
+            _FakeResponse(200, {"ok": True}),
+        ]
+        sleep_mock = AsyncMock()
+
+        with (
+            patch("app.weather_client.httpx.AsyncClient", return_value=_FakeClient(responses)),
+            patch("app.weather_client.asyncio.sleep", sleep_mock),
+        ):
+            result = await wc._json_get_with_retry("https://example.test", {"x": 1}, "weatherapi")
+
+        self.assertEqual(result, {"ok": True})
+        sleep_mock.assert_awaited_once()
+        self.assertEqual(sleep_mock.await_args.args[0], 2.0)
+
+    async def test_retry_backoff_adds_jitter_without_retry_after(self):
+        responses = [
+            _FakeResponse(429, {"error": "rate"}),
+            _FakeResponse(200, {"ok": True}),
+        ]
+        sleep_mock = AsyncMock()
+
+        with (
+            patch("app.weather_client.httpx.AsyncClient", return_value=_FakeClient(responses)),
+            patch("app.weather_client.random.uniform", return_value=0.25),
+            patch("app.weather_client.asyncio.sleep", sleep_mock),
+        ):
+            result = await wc._json_get_with_retry("https://example.test", {"x": 1}, "weatherapi")
+
+        self.assertEqual(result, {"ok": True})
+        sleep_mock.assert_awaited_once()
+        self.assertAlmostEqual(sleep_mock.await_args.args[0], 0.65, places=6)
 
 
 if __name__ == "__main__":

@@ -444,6 +444,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("shutdown")
+async def _shutdown_weather_http_clients() -> None:
+    await wc.close_http_clients()
+
+
 _cfg_lock = asyncio.Lock()
 
 

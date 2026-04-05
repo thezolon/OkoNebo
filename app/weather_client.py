@@ -4,6 +4,7 @@ Uses in-memory cache for speed + SQLite for persistence across restarts with ada
 """
 
 import asyncio
+import random
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Optional
@@ -267,31 +268,70 @@ set_provider_pull_cycles(None)
 # NWS HTTP helpers
 # ---------------------------------------------------------------------------
 
-def _client(user_agent: str) -> httpx.AsyncClient:
-    return httpx.AsyncClient(
-        headers={"User-Agent": user_agent, "Accept": "application/geo+json"},
+_HTTP_CLIENTS: dict[str, httpx.AsyncClient] = {}
+
+
+def _get_http_client(client_key: str, headers: dict[str, str] | None = None) -> httpx.AsyncClient:
+    client = _HTTP_CLIENTS.get(client_key)
+    if client is not None:
+        return client
+
+    client = httpx.AsyncClient(
+        headers=headers,
         timeout=15,
         follow_redirects=True,
+        limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
     )
+    _HTTP_CLIENTS[client_key] = client
+    return client
 
 
-async def _get(user_agent: str, url: str, retries: int = 3) -> dict:
+async def close_http_clients() -> None:
+    for client in list(_HTTP_CLIENTS.values()):
+        try:
+            await client.aclose()
+        except Exception:
+            continue
+    _HTTP_CLIENTS.clear()
+
+
+def _retry_sleep_seconds(exc: Exception, attempt: int) -> float:
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None and exc.response.status_code == 429:
+        retry_after = (exc.response.headers.get("Retry-After") or "").strip()
+        if retry_after:
+            try:
+                # Respect upstream rate-limit hints with a safety cap.
+                return min(max(float(retry_after), 0.0), 60.0)
+            except ValueError:
+                pass
+    return 0.4 * attempt + random.uniform(0.0, 0.3)
+
+
+async def _http_get_with_retry(
+    *,
+    url: str,
+    upstream_name: str,
+    client_key: str,
+    retries: int,
+    headers: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     retryable_status = {429, 500, 502, 503, 504}
     last_exc: Exception | None = None
 
     for attempt in range(1, retries + 1):
         try:
-            async with _client(user_agent) as client:
-                _bump_upstream_call("nws")
-                resp = await client.get(url)
-                if resp.status_code in retryable_status:
-                    raise httpx.HTTPStatusError(
-                        f"Retryable upstream status: {resp.status_code}",
-                        request=resp.request,
-                        response=resp,
-                    )
-                resp.raise_for_status()
-                return resp.json()
+            client = _get_http_client(client_key, headers=headers)
+            _bump_upstream_call(upstream_name)
+            resp = await client.get(url, params=params)
+            if resp.status_code in retryable_status:
+                raise httpx.HTTPStatusError(
+                    f"{upstream_name} upstream status: {resp.status_code}",
+                    request=resp.request,
+                    response=resp,
+                )
+            resp.raise_for_status()
+            return resp.json()
         except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
             last_exc = exc
             is_retryable_http = (
@@ -301,16 +341,26 @@ async def _get(user_agent: str, url: str, retries: int = 3) -> dict:
             )
             is_retryable = isinstance(exc, (httpx.TimeoutException, httpx.TransportError)) or is_retryable_http
             if attempt < retries and is_retryable:
-                _mark_retry_stat("nws", "attempted")
-                await asyncio.sleep(0.4 * attempt)
+                _mark_retry_stat(upstream_name, "attempted")
+                await asyncio.sleep(_retry_sleep_seconds(exc, attempt))
                 continue
             if is_retryable:
-                _mark_retry_stat("nws", "exhausted")
+                _mark_retry_stat(upstream_name, "exhausted")
             raise
 
     if last_exc is not None:
         raise last_exc
-    raise RuntimeError("Request failed unexpectedly")
+    raise RuntimeError(f"{upstream_name} request failed unexpectedly")
+
+
+async def _get(user_agent: str, url: str, retries: int = 3) -> dict:
+    return await _http_get_with_retry(
+        url=url,
+        upstream_name="nws",
+        client_key=f"nws:{user_agent}",
+        retries=retries,
+        headers={"User-Agent": user_agent, "Accept": "application/geo+json"},
+    )
 
 
 async def _get_or_refresh_shared(
@@ -583,43 +633,13 @@ _TOMORROW_CODE_TEXT = {
 
 
 async def _json_get_with_retry(url: str, params: dict[str, Any], upstream_name: str) -> dict[str, Any]:
-    retryable_status = {429, 500, 502, 503, 504}
-    last_exc: Exception | None = None
-
-    for attempt in range(1, 4):
-        try:
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                _bump_upstream_call(upstream_name)
-                resp = await client.get(url, params=params)
-                if resp.status_code in retryable_status:
-                    raise httpx.HTTPStatusError(
-                        f"{upstream_name} upstream status: {resp.status_code}",
-                        request=resp.request,
-                        response=resp,
-                    )
-                resp.raise_for_status()
-                return resp.json()
-        except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
-            last_exc = exc
-            is_retryable_http = (
-                isinstance(exc, httpx.HTTPStatusError)
-                and exc.response is not None
-                and exc.response.status_code in retryable_status
-            )
-            if attempt < 3 and (
-                isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
-                or is_retryable_http
-            ):
-                _mark_retry_stat(upstream_name, "attempted")
-                await asyncio.sleep(0.4 * attempt)
-                continue
-            if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)) or is_retryable_http:
-                _mark_retry_stat(upstream_name, "exhausted")
-            raise
-
-    if last_exc:
-        raise last_exc
-    raise RuntimeError(f"{upstream_name} request failed unexpectedly")
+    return await _http_get_with_retry(
+        url=url,
+        params=params,
+        upstream_name=upstream_name,
+        client_key=f"provider:{upstream_name}",
+        retries=3,
+    )
 
 
 def _normalize_weatherapi_current(payload: dict[str, Any]) -> dict[str, Any]:
