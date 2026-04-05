@@ -21,7 +21,7 @@ import os
 import re
 import secrets
 import time
-from typing import Any
+from typing import Any, Awaitable, Callable
 from zoneinfo import available_timezones
 
 import yaml
@@ -602,6 +602,54 @@ def _request_identity(request: Request) -> dict[str, Any] | None:
 def _track_provider_outcome(endpoint: str, provider_id: str, outcome: str) -> None:
     key = f"{endpoint}:{provider_id}:{outcome}"
     _PROVIDER_OUTCOMES[key] += 1
+
+
+def _annotate_provider_source(endpoint: str, provider_id: str, payload: Any) -> Any:
+    if endpoint == "current" and isinstance(payload, dict):
+        payload["source"] = provider_id
+        return payload
+    if endpoint in {"forecast", "hourly"} and isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                item.setdefault("source", provider_id)
+    return payload
+
+
+async def _provider_attempt(
+    endpoint: str,
+    provider_id: str,
+    fetcher: Callable[[], Awaitable[Any]],
+    attempted: list[str],
+    provider_errors: dict[str, str],
+) -> Any | None:
+    attempted.append(provider_id)
+    started = time.time()
+    try:
+        payload = await fetcher()
+        _track_provider_outcome(endpoint, provider_id, "success")
+        _log_event(
+            "provider.attempt",
+            None,
+            endpoint=endpoint,
+            provider=provider_id,
+            success=True,
+            duration_ms=int((time.time() - started) * 1000),
+        )
+        return _annotate_provider_source(endpoint, provider_id, payload)
+    except Exception as exc:
+        provider_errors[provider_id] = str(exc)
+        _track_provider_outcome(endpoint, provider_id, "error")
+        _log_event(
+            "provider.attempt",
+            None,
+            level="warning",
+            endpoint=endpoint,
+            provider=provider_id,
+            success=False,
+            duration_ms=int((time.time() - started) * 1000),
+            error=str(exc),
+        )
+        return None
 
 
 def _observability_health(upstream_stats: dict[str, Any], active_rate_limit_clients: int) -> dict[str, Any]:
@@ -1264,68 +1312,36 @@ async def api_current():
     attempted: list[str] = []
     provider_errors: dict[str, str] = {}
 
-    async def _attempt(provider_id: str, fetcher):
-        attempted.append(provider_id)
-        started = time.time()
-        try:
-            payload = await fetcher()
-            _track_provider_outcome("current", provider_id, "success")
-            _log_event(
-                "provider.attempt",
-                None,
-                endpoint="current",
-                provider=provider_id,
-                success=True,
-                duration_ms=int((time.time() - started) * 1000),
-            )
-            if isinstance(payload, dict):
-                payload["source"] = provider_id
-            return payload
-        except Exception as exc:
-            provider_errors[provider_id] = str(exc)
-            _track_provider_outcome("current", provider_id, "error")
-            _log_event(
-                "provider.attempt",
-                None,
-                level="warning",
-                endpoint="current",
-                provider=provider_id,
-                success=False,
-                duration_ms=int((time.time() - started) * 1000),
-                error=str(exc),
-            )
-            return None
-
     if PROVIDERS.get("nws", {}).get("enabled"):
-        payload = await _attempt("nws", lambda: wc.get_current(LAT, LON, USER_AGENT))
+        payload = await _provider_attempt("current", "nws", lambda: wc.get_current(LAT, LON, USER_AGENT), attempted, provider_errors)
         if payload is not None:
             return payload
 
     if PROVIDERS.get("weatherapi", {}).get("enabled"):
         weatherapi_key = _provider_api_key("weatherapi")
         if weatherapi_key:
-            payload = await _attempt("weatherapi", lambda: wc.get_weatherapi_current(LAT, LON, weatherapi_key))
+            payload = await _provider_attempt("current", "weatherapi", lambda: wc.get_weatherapi_current(LAT, LON, weatherapi_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
     if PROVIDERS.get("tomorrow", {}).get("enabled"):
         tomorrow_key = _provider_api_key("tomorrow")
         if tomorrow_key:
-            payload = await _attempt("tomorrow", lambda: wc.get_tomorrow_current(LAT, LON, tomorrow_key))
+            payload = await _provider_attempt("current", "tomorrow", lambda: wc.get_tomorrow_current(LAT, LON, tomorrow_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
     if PROVIDERS.get("visualcrossing", {}).get("enabled"):
         visualcrossing_key = _provider_api_key("visualcrossing")
         if visualcrossing_key:
-            payload = await _attempt("visualcrossing", lambda: wc.get_visualcrossing_current(LAT, LON, visualcrossing_key))
+            payload = await _provider_attempt("current", "visualcrossing", lambda: wc.get_visualcrossing_current(LAT, LON, visualcrossing_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
     if PROVIDERS.get("meteomatics", {}).get("enabled"):
         meteomatics_key = _provider_api_key("meteomatics")
         if meteomatics_key and ":" in meteomatics_key:
-            payload = await _attempt("meteomatics", lambda: wc.get_meteomatics_current(LAT, LON, meteomatics_key))
+            payload = await _provider_attempt("current", "meteomatics", lambda: wc.get_meteomatics_current(LAT, LON, meteomatics_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
@@ -1351,63 +1367,29 @@ async def api_forecast():
     attempted: list[str] = []
     provider_errors: dict[str, str] = {}
 
-    async def _attempt(provider_id: str, fetcher):
-        attempted.append(provider_id)
-        started = time.time()
-        try:
-            payload = await fetcher()
-            _track_provider_outcome("forecast", provider_id, "success")
-            _log_event(
-                "provider.attempt",
-                None,
-                endpoint="forecast",
-                provider=provider_id,
-                success=True,
-                duration_ms=int((time.time() - started) * 1000),
-            )
-            if isinstance(payload, list):
-                for item in payload:
-                    if isinstance(item, dict):
-                        item.setdefault("source", provider_id)
-            return payload
-        except Exception as exc:
-            provider_errors[provider_id] = str(exc)
-            _track_provider_outcome("forecast", provider_id, "error")
-            _log_event(
-                "provider.attempt",
-                None,
-                level="warning",
-                endpoint="forecast",
-                provider=provider_id,
-                success=False,
-                duration_ms=int((time.time() - started) * 1000),
-                error=str(exc),
-            )
-            return None
-
     if PROVIDERS.get("nws", {}).get("enabled"):
-        payload = await _attempt("nws", lambda: wc.get_forecast(LAT, LON, USER_AGENT))
+        payload = await _provider_attempt("forecast", "nws", lambda: wc.get_forecast(LAT, LON, USER_AGENT), attempted, provider_errors)
         if payload is not None:
             return payload
 
     if PROVIDERS.get("weatherapi", {}).get("enabled"):
         weatherapi_key = _provider_api_key("weatherapi")
         if weatherapi_key:
-            payload = await _attempt("weatherapi", lambda: wc.get_weatherapi_forecast(LAT, LON, weatherapi_key))
+            payload = await _provider_attempt("forecast", "weatherapi", lambda: wc.get_weatherapi_forecast(LAT, LON, weatherapi_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
     if PROVIDERS.get("tomorrow", {}).get("enabled"):
         tomorrow_key = _provider_api_key("tomorrow")
         if tomorrow_key:
-            payload = await _attempt("tomorrow", lambda: wc.get_tomorrow_forecast(LAT, LON, tomorrow_key))
+            payload = await _provider_attempt("forecast", "tomorrow", lambda: wc.get_tomorrow_forecast(LAT, LON, tomorrow_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
     if PROVIDERS.get("visualcrossing", {}).get("enabled"):
         visualcrossing_key = _provider_api_key("visualcrossing")
         if visualcrossing_key:
-            payload = await _attempt("visualcrossing", lambda: wc.get_visualcrossing_forecast(LAT, LON, visualcrossing_key))
+            payload = await _provider_attempt("forecast", "visualcrossing", lambda: wc.get_visualcrossing_forecast(LAT, LON, visualcrossing_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
@@ -1433,63 +1415,29 @@ async def api_hourly():
     attempted: list[str] = []
     provider_errors: dict[str, str] = {}
 
-    async def _attempt(provider_id: str, fetcher):
-        attempted.append(provider_id)
-        started = time.time()
-        try:
-            payload = await fetcher()
-            _track_provider_outcome("hourly", provider_id, "success")
-            _log_event(
-                "provider.attempt",
-                None,
-                endpoint="hourly",
-                provider=provider_id,
-                success=True,
-                duration_ms=int((time.time() - started) * 1000),
-            )
-            if isinstance(payload, list):
-                for item in payload:
-                    if isinstance(item, dict):
-                        item.setdefault("source", provider_id)
-            return payload
-        except Exception as exc:
-            provider_errors[provider_id] = str(exc)
-            _track_provider_outcome("hourly", provider_id, "error")
-            _log_event(
-                "provider.attempt",
-                None,
-                level="warning",
-                endpoint="hourly",
-                provider=provider_id,
-                success=False,
-                duration_ms=int((time.time() - started) * 1000),
-                error=str(exc),
-            )
-            return None
-
     if PROVIDERS.get("nws", {}).get("enabled"):
-        payload = await _attempt("nws", lambda: wc.get_hourly(LAT, LON, USER_AGENT))
+        payload = await _provider_attempt("hourly", "nws", lambda: wc.get_hourly(LAT, LON, USER_AGENT), attempted, provider_errors)
         if payload is not None:
             return payload
 
     if PROVIDERS.get("weatherapi", {}).get("enabled"):
         weatherapi_key = _provider_api_key("weatherapi")
         if weatherapi_key:
-            payload = await _attempt("weatherapi", lambda: wc.get_weatherapi_hourly(LAT, LON, weatherapi_key))
+            payload = await _provider_attempt("hourly", "weatherapi", lambda: wc.get_weatherapi_hourly(LAT, LON, weatherapi_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
     if PROVIDERS.get("tomorrow", {}).get("enabled"):
         tomorrow_key = _provider_api_key("tomorrow")
         if tomorrow_key:
-            payload = await _attempt("tomorrow", lambda: wc.get_tomorrow_hourly(LAT, LON, tomorrow_key))
+            payload = await _provider_attempt("hourly", "tomorrow", lambda: wc.get_tomorrow_hourly(LAT, LON, tomorrow_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
     if PROVIDERS.get("visualcrossing", {}).get("enabled"):
         visualcrossing_key = _provider_api_key("visualcrossing")
         if visualcrossing_key:
-            payload = await _attempt("visualcrossing", lambda: wc.get_visualcrossing_hourly(LAT, LON, visualcrossing_key))
+            payload = await _provider_attempt("hourly", "visualcrossing", lambda: wc.get_visualcrossing_hourly(LAT, LON, visualcrossing_key), attempted, provider_errors)
             if payload is not None:
                 return payload
 
