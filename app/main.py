@@ -1654,6 +1654,22 @@ async def api_debug():
     _record_observability_state(observability)
     observability["recommendations"] = _observability_recommendations(observability)
 
+    client_snapshot = DEBUG_STATE["last_client_snapshot"]
+    client_icon_health = (
+        client_snapshot.get("icon_health", {})
+        if isinstance(client_snapshot, dict)
+        and isinstance(client_snapshot.get("icon_health", {}), dict)
+        else {}
+    )
+    pws_icon_diagnostics = {
+        "fallback_count": int(client_icon_health.get("fallback_count") or 0),
+        "last_failed_url": client_icon_health.get("last_failed_url"),
+        "last_failed_at": client_icon_health.get("last_failed_at"),
+        "current_source_key": client_icon_health.get("current_source_key"),
+        "current_source_label": client_icon_health.get("current_source_label"),
+        "has_recent_failures": bool(client_icon_health.get("fallback_count")),
+    }
+
     return {
         "server_time": int(time.time()),
         "server_started_at": SERVER_STARTED_AT,
@@ -1677,9 +1693,10 @@ async def api_debug():
             "active_clients": active_rate_limit_clients,
             "blocked_total": _RATE_LIMIT_BLOCKED_TOTAL,
         },
+        "pws_icon_diagnostics": pws_icon_diagnostics,
         "observability": observability,
         "provider_outcomes": dict(_PROVIDER_OUTCOMES),
-        "client": DEBUG_STATE["last_client_snapshot"],
+        "client": client_snapshot,
         "client_updated_at": DEBUG_STATE["last_client_update"],
     }
 

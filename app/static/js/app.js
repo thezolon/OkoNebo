@@ -80,6 +80,9 @@ const SERVER_DEBUG_REFRESH_MS = 45000;
 const iemState = { times: [] };
 const CURRENT_SOURCE_STORAGE_KEY = 'weatherapp.currentSourceKey';
 const PANEL_COLLAPSE_STORAGE_KEY = 'weatherapp.panelCollapse';
+const DEFAULT_WEATHER_ICON = `data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs><rect width="64" height="64" rx="8" fill="url(#bg)"/><circle cx="22" cy="24" r="10" fill="#fde68a"/><g fill="#ffffff"><ellipse cx="37" cy="38" rx="16" ry="10"/><ellipse cx="27" cy="39" rx="9" ry="7"/></g></svg>'
+)}`;
 
 let chartInstance = null;
 let radarMap = null;
@@ -111,6 +114,12 @@ const runtime = {
     panelLayoutStatusTimer: null,
     timelineFilterType: 'all',
     timelineSearchText: '',
+    iconFallbackCount: 0,
+    lastIconSourceUrl: '',
+    lastIconFailedUrl: '',
+    lastIconFailedAt: null,
+    lastCurrentSourceKey: '',
+    lastCurrentSourceLabel: '',
 };
 
 function normalizePressure(level) {
@@ -416,6 +425,44 @@ function getNwsObsHealth(timestamp) {
         return { level: 'questionable', ageMin, refreshMin, questionableAfterMin, severeAfterMin };
     }
     return { level: 'fresh', ageMin, refreshMin, questionableAfterMin, severeAfterMin };
+}
+
+function getSourceHealth(source) {
+    if (!source) {
+        return { level: 'offline', ageMin: null, label: 'Source' };
+    }
+
+    const key = String(source.key || '').toLowerCase();
+    const label = String(source.label || 'Source');
+
+    // Keep NWS-specific thresholds for station obs freshness.
+    if (key === 'nws' || key === 'auto') {
+        const nws = getNwsObsHealth(source.timestamp);
+        return { level: nws.level, ageMin: nws.ageMin, label: 'NWS' };
+    }
+
+    const ts = parseTimestamp(source.timestamp);
+    if (ts == null) {
+        return { level: 'offline', ageMin: null, label };
+    }
+
+    const ageMin = Math.max((Date.now() - ts) / 60000, 0);
+
+    if (key.startsWith('pws:')) {
+        if (ageMin > 12) return { level: 'stale', ageMin, label: 'PWS' };
+        if (ageMin > 5) return { level: 'questionable', ageMin, label: 'PWS' };
+        return { level: 'fresh', ageMin, label: 'PWS' };
+    }
+
+    if (key === 'owm') {
+        if (ageMin > 45) return { level: 'stale', ageMin, label: 'OWM' };
+        if (ageMin > 20) return { level: 'questionable', ageMin, label: 'OWM' };
+        return { level: 'fresh', ageMin, label: 'OWM' };
+    }
+
+    if (ageMin > 25) return { level: 'stale', ageMin, label };
+    if (ageMin > 10) return { level: 'questionable', ageMin, label };
+    return { level: 'fresh', ageMin, label };
 }
 
 function renderSourceAges() {
@@ -1100,22 +1147,49 @@ function buildCurrentSources() {
         });
     }
 
+    const pwsEnabled = !!cache.config?.providers?.pws?.enabled;
+    const preferPwsInAuto = pwsEnabled && !!primaryPws;
+
     sources.push({
         key: 'auto',
         label: 'Auto Blend',
-        tempF: firstDefined(d.temp_f, primaryPws?.temp_f),
-        feelsF: firstDefined(d.feels_like_f, primaryPws?.heat_index_f, primaryPws?.temp_f),
-        humidity: firstDefined(d.humidity, primaryPws?.humidity),
-        wind: firstDefined(d.wind_speed_mph, primaryPws?.wind_mph),
-        windDirDeg: toNumber(d.wind_direction),
-        gust: firstDefined(d.wind_gust_mph, primaryPws?.wind_gust_mph),
-        pressure: firstDefined(d.pressure_inhg, primaryPws?.pressure_inhg),
+        tempF: preferPwsInAuto
+            ? firstDefined(primaryPws?.temp_f, d.temp_f)
+            : firstDefined(d.temp_f, primaryPws?.temp_f),
+        feelsF: preferPwsInAuto
+            ? firstDefined(primaryPws?.heat_index_f, primaryPws?.temp_f, d.feels_like_f)
+            : firstDefined(d.feels_like_f, primaryPws?.heat_index_f, primaryPws?.temp_f),
+        humidity: preferPwsInAuto
+            ? firstDefined(primaryPws?.humidity, d.humidity)
+            : firstDefined(d.humidity, primaryPws?.humidity),
+        wind: preferPwsInAuto
+            ? firstDefined(primaryPws?.wind_mph, d.wind_speed_mph)
+            : firstDefined(d.wind_speed_mph, primaryPws?.wind_mph),
+        windDirDeg: preferPwsInAuto
+            ? firstDefined(toNumber(primaryPws?.winddir), toNumber(d.wind_direction))
+            : firstDefined(toNumber(d.wind_direction), toNumber(primaryPws?.winddir)),
+        gust: preferPwsInAuto
+            ? firstDefined(primaryPws?.wind_gust_mph, d.wind_gust_mph)
+            : firstDefined(d.wind_gust_mph, primaryPws?.wind_gust_mph),
+        pressure: preferPwsInAuto
+            ? firstDefined(primaryPws?.pressure_inhg, d.pressure_inhg)
+            : firstDefined(d.pressure_inhg, primaryPws?.pressure_inhg),
         visibility: firstDefined(d.visibility_miles, null),
-        dewpoint: firstDefined(d.dewpoint_f, primaryPws?.dewpt_f),
-        description: d.description || (primaryPws ? 'PWS observation' : '--'),
-        icon: d.icon || '',
-        station: d.station ? `${d.station} (NWS)` : (primaryPws ? `${PWS_NAMES[primaryPws.station_id] || primaryPws.station_id} (PWS)` : '--'),
-        timestamp: firstDefined(d.timestamp, primaryPws?.obs_time_utc),
+        dewpoint: preferPwsInAuto
+            ? firstDefined(primaryPws?.dewpt_f, d.dewpoint_f)
+            : firstDefined(d.dewpoint_f, primaryPws?.dewpt_f),
+        description: preferPwsInAuto
+            ? (primaryPws?.weather_desc || 'PWS observation')
+            : (d.description || (primaryPws ? (primaryPws.weather_desc || 'PWS observation') : '--')),
+        icon: preferPwsInAuto
+            ? (primaryPws?.icon || d.icon || '')
+            : (d.icon || primaryPws?.icon || ''),
+        station: preferPwsInAuto
+            ? `${PWS_NAMES[primaryPws.station_id] || primaryPws.station_id} (PWS)`
+            : (d.station ? `${d.station} (NWS)` : (primaryPws ? `${PWS_NAMES[primaryPws.station_id] || primaryPws.station_id} (PWS)` : '--')),
+        timestamp: preferPwsInAuto
+            ? firstDefined(primaryPws?.obs_time_utc, d.timestamp)
+            : firstDefined(d.timestamp, primaryPws?.obs_time_utc),
         uv: firstDefined(owmCurrent?.uvi, null),
         sunrise: firstDefined(owmCurrent?.sunrise, null),
         sunset: firstDefined(owmCurrent?.sunset, null),
@@ -1589,12 +1663,22 @@ async function reportDebugSnapshot(reason = 'manual') {
         radar_provider: state.radarProvider,
         inflight_requests: _inflightRequests.size,
         cache: getDebugStats(),
+        icon_health: {
+            fallback_count: runtime.iconFallbackCount,
+            last_source_url: runtime.lastIconSourceUrl || null,
+            last_failed_url: runtime.lastIconFailedUrl || null,
+            last_failed_at: runtime.lastIconFailedAt,
+            current_source_key: runtime.lastCurrentSourceKey || null,
+            current_source_label: runtime.lastCurrentSourceLabel || null,
+        },
     };
     const signature = JSON.stringify({
         offline: payload.offline,
         last_sync: payload.last_sync,
         inflight_requests: payload.inflight_requests,
         cache_size: payload.cache.cacheSize,
+        icon_fallback_count: payload.icon_health.fallback_count,
+        icon_failed_at: payload.icon_health.last_failed_at,
         reason: payload.reason,
     });
 
@@ -1744,15 +1828,19 @@ async function renderCurrent(forceFetch = false) {
     document.getElementById('dewpoint').textContent = displayTemp(active.dewpoint);
     document.getElementById('current-station').textContent = active.station || '--';
 
-    if (active.icon) {
-        const icon = document.getElementById('current-icon');
-        icon.src = active.icon;
-        icon.alt = active.description || '';
-    } else {
-        const icon = document.getElementById('current-icon');
-        icon.src = '';
-        icon.alt = '';
-    }
+    const icon = document.getElementById('current-icon');
+    runtime.lastCurrentSourceKey = active.key || '';
+    runtime.lastCurrentSourceLabel = active.label || '';
+    runtime.lastIconSourceUrl = active.icon || '';
+    icon.onerror = () => {
+        runtime.iconFallbackCount += 1;
+        runtime.lastIconFailedUrl = runtime.lastIconSourceUrl || '';
+        runtime.lastIconFailedAt = Date.now();
+        icon.onerror = null;
+        icon.src = DEFAULT_WEATHER_ICON;
+    };
+    icon.src = active.icon || DEFAULT_WEATHER_ICON;
+    icon.alt = active.description || 'Weather icon';
 
     document.getElementById('last-updated').textContent = active.timestamp ? `Updated ${formatTime(active.timestamp)}` : '--';
     document.getElementById('uv-index').textContent = active.uv != null ? `${Number(active.uv).toFixed(1)}` : '--';
@@ -3217,11 +3305,14 @@ async function loadAll(forceFetch = false) {
 
     try {
         cache.owm = await fetchAPIDeduped('/owm');
-        await renderCurrent(false);
         await renderOwmDaily(false);
     } catch (err) {
         cache.owm = null;
     }
+
+    // Rebuild current source carousel after parallel tasks settle so PWS sources
+    // are available even when OWM is unavailable/failing.
+    await renderCurrent(false);
 
     const failures = [];
     nwsResults.forEach((result, idx) => {
@@ -3230,6 +3321,8 @@ async function loadAll(forceFetch = false) {
 
     const owmUsable = !!(cache.owm && cache.owm.available !== false);
     const nwsHealth = getNwsObsHealth(cache.current?.timestamp);
+    const activeSource = (cache.currentSources || [])[state.currentSourceIndex] || null;
+    const activeHealth = getSourceHealth(activeSource);
     const nwsDotStatus = failures.length
         ? 'error'
         : (nwsHealth.level === 'stale' ? 'error' : (nwsHealth.level === 'questionable' ? 'warn' : 'ok'));
@@ -3240,12 +3333,12 @@ async function loadAll(forceFetch = false) {
 
     if (failures.length === 0) {
         clearError();
-        if (nwsHealth.level === 'stale') {
-            const age = Math.round(nwsHealth.ageMin || 0);
-            setStatus(`Live (NWS stale ${age}m)`, 'warn');
-        } else if (nwsHealth.level === 'questionable') {
-            const age = Math.round(nwsHealth.ageMin || 0);
-            setStatus(`Live (NWS aging ${age}m)`, 'loading');
+        if (activeHealth.level === 'stale') {
+            const age = Math.round(activeHealth.ageMin || 0);
+            setStatus(`Live (${activeHealth.label} stale ${age}m)`, 'warn');
+        } else if (activeHealth.level === 'questionable') {
+            const age = Math.round(activeHealth.ageMin || 0);
+            setStatus(`Live (${activeHealth.label} aging ${age}m)`, 'loading');
         } else {
             setStatus(owmUsable ? 'Live' : 'Live (NWS/PWS)', owmUsable ? 'ok' : 'loading');
         }
