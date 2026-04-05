@@ -1813,6 +1813,16 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
             pws_cfg["stations"] = _sanitize_pws_stations(pws_payload.get("stations") or [])
         cfg["pws"] = pws_cfg
 
+        # Store PWS API key in secure store (like other providers)
+        if "api_key" in pws_payload:
+            raw = str(pws_payload.get("api_key") or "").strip()
+            if raw and len(raw) > 512:
+                raise HTTPException(status_code=400, detail="pws api_key must be <= 512 characters")
+            if raw:
+                SECURE_STORE.set_json("providers.pws.api_key", raw)
+            else:
+                SECURE_STORE.delete("providers.pws.api_key")
+
         auth_payload = payload.get("auth", {}) if isinstance(payload.get("auth", {}), dict) else {}
         auth_cfg = cfg.get("auth", {}) if isinstance(cfg.get("auth", {}), dict) else {}
         users = list(auth_cfg.get("users", []) or [])
@@ -1911,11 +1921,12 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
 
         SECURE_STORE.set_json("auth.users", users)
 
+        runtime_pws_data = pws_cfg.copy() if pws_cfg else {}
         runtime_settings = {
             "location": cfg.get("location", {}),
             "alert_locations": cfg.get("alert_locations", []),
             "user_agent": cfg.get("user_agent"),
-            "pws": cfg.get("pws", {}),
+            "pws": runtime_pws_data,
             "providers": runtime_providers,
             "map": {"provider": chosen_map_provider},
             "auth": {
@@ -1980,24 +1991,18 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
 
     try:
         if provider == "pws":
-            pws_provider = str(request.query_params.get("pws_provider") if request else "" or "").strip() or PWS_PROVIDER
-            pws_stations_raw = str(request.query_params.get("pws_stations") if request else "" or "").strip()
-            pws_stations = _sanitize_pws_stations(
-                [part.strip() for part in pws_stations_raw.split(",") if part.strip()]
-            ) if pws_stations_raw else _sanitize_pws_stations(PWS_STATIONS)
-
             if not test_api_key:
                 raise HTTPException(status_code=400, detail="Provider pws requires an API key but none is configured")
-            if not pws_stations:
+            if not PWS_STATIONS:
                 raise HTTPException(status_code=400, detail="Provider pws requires at least one station ID")
 
-            pws_result = await wc.get_pws_observations(pws_provider, pws_stations, test_api_key)
+            pws_result = await wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, test_api_key)
             station_count = len(pws_result.get("stations", []))
             if station_count > 0:
                 return {
                     "ok": True,
                     "provider": provider,
-                    "message": f"PWS API responding ({station_count}/{len(pws_stations)} stations)",
+                    "message": f"PWS API responding ({station_count}/{len(PWS_STATIONS)} stations)",
                     "data": pws_result,
                 }
             errors = pws_result.get("errors", []) if isinstance(pws_result.get("errors", []), list) else []

@@ -228,13 +228,27 @@ class SetupAuthIntegrationTests(unittest.TestCase):
 
         main.wc.get_pws_observations = fake_get_pws_observations
         try:
+            # First configure PWS via settings
+            settings_resp = self.client.post(
+                "/api/settings",
+                json={
+                    "location": {"home": {"lat": 36.15, "lon": -95.99}, "timezone": "UTC"},
+                    "pws": {
+                        "provider": "weather.com",
+                        "stations": ["KOKPRAGU2", "KOKPRAGU20"],
+                        "api_key": "test-key",
+                    },
+                    "providers": {"pws": {"enabled": True}},
+                },
+            )
+            self.assertEqual(settings_resp.status_code, 200, settings_resp.text)
+            
+            # Now test provider should work with stored config
             resp = self.client.get(
                 "/api/test-provider",
                 params={
                     "provider": "pws",
                     "api_key": "test-key",
-                    "pws_provider": "weather.com",
-                    "pws_stations": "KOKPRAGU2, KOKPRAGU20",
                 },
             )
             self.assertEqual(resp.status_code, 200, resp.text)
