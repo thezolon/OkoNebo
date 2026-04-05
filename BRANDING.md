@@ -1,51 +1,29 @@
 # OkoNebo Branding
 
-## Logo
+## Canonical Source
 
-The OkoNebo logo is a polar weather radar/compass design symbolizing the project's focus on real-time location-based weather data integration from multiple providers.
+- Source artwork: `OKONEBO.svg` (root of repository)
+- Authoring tool: Adobe Illustrator (user-provided export)
 
-### Logo Files
+## Runtime Asset Paths
 
-- **Full Logo with Text**: `app/static/okonebo-logo.svg` (400x480px)
-- **Icon Only**: `app/static/okonebo-icon.svg` (256x256px, scalable)
-- **Design**: Eight-point compass with weather icons (sun, rain) and polar grid overlay
-- **Colors**: Charcoal (#1a1a1a) on light background (#f5f5f5)
-- **Symbolism**:
-  - **Polar Grid**: Real-time data collection and localized weather patterns
-  - **Compass Center**: Multi-provider convergence and deterministic fallback routing
-  - **Weather Icons**: Sun and rain representing observation and alert capabilities
-  - **Eight Points**: Full 360° environmental awareness
+- Full logo: `app/static/okonebo-logo.svg`
+- Icon/favicons/header mark: `app/static/okonebo-icon.svg`
 
-### Usage
+Both runtime asset paths are intentionally kept in sync with `OKONEBO.svg` so existing HTML references continue to work without further code changes.
 
-#### Web Integration
-- **Favicon**: All HTML pages include `<link rel="icon" type="image/svg+xml" href="okonebo-icon.svg">`
-- **Branding Elements**: Dashboard and admin pages display compact compass icon in headers
-- **Documentation**: Full logo displayed in README.md
+## Usage
 
-#### Docker
-- **Image Labels**: Dockerfile includes OCI-compliant metadata with branding:
-  - `org.opencontainers.image.title="OkoNebo"`
-  - `org.opencontainers.image.description`, `url`, `documentation`, etc.
+### Web Integration
 
-#### Repository
-- **GitHub Badges**: CI/CD workflow badges in README
-- **Social**: Use `okonebo-logo.svg` for GitHub profile and releases
+- Favicon path: `okonebo-icon.svg`
+- Header icon path: `okonebo-icon.svg`
+- README image path: `app/static/okonebo-logo.svg`
 
-## Font & Typography
+### Docker Metadata
 
-- **Logo Text**: Arial, sans-serif, letter-spacing: 2px
-- **Project Name**: "OkoNebo" (always in full, no abbreviations in formal contexts)
-- **Tagline**: "Self-hosted weather dashboard and local API"
-
-## Color Palette
-
-| Element | Color | Hex | Usage |
-|---------|-------|-----|-------|
-| Icon/Text | Charcoal | #1a1a1a | Primary foreground |
-| Background | Off-white | #f5f5f5 | Logo background/fill |
-| Grid | Light Gray | #e0e0e0 | Polar grid overlay |
+Docker image OCI labels in `Dockerfile` remain the source for project branding metadata (`title`, `description`, `url`, `documentation`, `source`, `version`).
 
 ## License
 
-OkoNebo is distributed under the MIT License. Logo is part of the project and subject to the same license.
+OkoNebo is distributed under the MIT License. Logo assets in this repository are part of the project.
