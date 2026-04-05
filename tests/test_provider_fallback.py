@@ -220,6 +220,25 @@ class FallbackErrorMetadataTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(detail.get("errors", {}).get("visualcrossing"), "vc down")
         self.assertEqual(len(detail.get("attempted", [])), 4)
 
+
+class HistoryEndpointTests(unittest.IsolatedAsyncioTestCase):
+    async def test_history_endpoint_returns_bounded_sorted_points(self):
+        fake_points = {
+            "hours": 4,
+            "points": [
+                {"timestamp": 100, "source": "nws", "temp_f": 65},
+                {"timestamp": 200, "source": "nws", "temp_f": 66},
+            ],
+            "updated_at": 300,
+        }
+
+        with patch("app.main.wc.get_current_history", new=AsyncMock(return_value=fake_points)) as mock_history:
+            payload = await main.api_history(hours=4)
+
+        mock_history.assert_awaited_once_with(main.LAT, main.LON, hours=4)
+        self.assertEqual(payload["hours"], 4)
+        self.assertEqual([point["timestamp"] for point in payload["points"]], [100, 200])
+
     async def test_disabled_provider_not_in_attempted(self):
         """Disabled providers must never appear in the attempted list."""
         main.PROVIDERS = {

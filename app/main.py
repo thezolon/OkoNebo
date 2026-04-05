@@ -124,6 +124,7 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
     "/api/bootstrap": "config.read",
     "/api/current": "weather.read",
     "/api/current/multi": "weather.read",
+    "/api/history": "weather.read",
     "/api/forecast": "weather.read",
     "/api/hourly": "weather.read",
     "/api/alerts": "weather.read",
@@ -1365,6 +1366,7 @@ async def api_capabilities():
             {"name": "get_bootstrap", "endpoint": "/api/bootstrap", "scope": "config.read"},
             {"name": "get_current", "endpoint": "/api/current", "scope": "weather.read"},
             {"name": "get_current_multi", "endpoint": "/api/current/multi", "scope": "weather.read"},
+            {"name": "get_history", "endpoint": "/api/history", "scope": "weather.read"},
             {"name": "get_forecast", "endpoint": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "endpoint": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "endpoint": "/api/alerts", "scope": "weather.read"},
@@ -1412,6 +1414,7 @@ async def api_agent_profile(request: Request):
         "tools": [
             {"name": "get_current", "method": "GET", "path": "/api/current", "scope": "weather.read"},
             {"name": "get_current_multi", "method": "GET", "path": "/api/current/multi", "scope": "weather.read"},
+            {"name": "get_history", "method": "GET", "path": "/api/history", "scope": "weather.read"},
             {"name": "get_forecast", "method": "GET", "path": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "method": "GET", "path": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "method": "GET", "path": "/api/alerts", "scope": "weather.read"},
@@ -1813,6 +1816,19 @@ async def api_forecast():
         "errors": provider_errors,
     }
     raise HTTPException(status_code=502, detail=details)
+
+
+@app.get(
+    "/api/history",
+    summary="Historical current-condition snapshots",
+    description=(
+        "Returns a bounded, ascending time series of cached current-condition snapshots "
+        "for the configured primary location. Designed for lightweight trend charting."
+    ),
+    tags=["Weather"],
+)
+async def api_history(hours: int = Query(default=6, ge=1, le=24)):
+    return await wc.get_current_history(LAT, LON, hours=hours)
 
 
 @app.get(

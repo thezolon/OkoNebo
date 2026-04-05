@@ -164,7 +164,21 @@ class WeatherCache:
                     timestamp INTEGER NOT NULL
                 )
             """)
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT NOT NULL,
+                    cache_type TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL
+                )
+            """)
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_history_timestamp ON history(timestamp)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_history_key ON history(key)")
             self._conn.commit()
+
+    def _should_record_history(self, cache_type: str) -> bool:
+        return str(cache_type).startswith("current_")
 
     def _get_ttl(self, cache_type: str, threat_level: str = "default") -> int:
         """Get TTL in seconds based on threat level."""
@@ -184,6 +198,15 @@ class WeatherCache:
                 "INSERT OR REPLACE INTO cache (key, data, timestamp) VALUES (?, ?, ?)",
                 (key, json_data, timestamp),
             )
+            if self._should_record_history(cache_type):
+                self._conn.execute(
+                    "INSERT INTO history (key, cache_type, data, timestamp) VALUES (?, ?, ?, ?)",
+                    (key, cache_type, json_data, timestamp),
+                )
+                self._conn.execute(
+                    "DELETE FROM history WHERE timestamp < ?",
+                    (timestamp - 172800,),
+                )
             self._conn.commit()
 
     def get(self, key: str, cache_type: str = "default", threat_level: str = "default") -> Optional[Dict[str, Any]]:
@@ -229,7 +252,43 @@ class WeatherCache:
         """Clear all cache entries."""
         with self._lock:
             self._conn.execute("DELETE FROM cache")
+            self._conn.execute("DELETE FROM history")
             self._conn.commit()
+
+    def get_history(self, keys: list[str], hours: int = 6, limit: int = 500) -> list[Dict[str, Any]]:
+        """Return bounded ascending time-series snapshots for the requested keys."""
+        clean_keys = [str(key) for key in keys if str(key)]
+        if not clean_keys:
+            return []
+
+        safe_hours = max(1, min(int(hours), 24))
+        safe_limit = max(1, min(int(limit), 2000))
+        cutoff = int(time.time()) - (safe_hours * 3600)
+        placeholders = ", ".join("?" for _ in clean_keys)
+        query = (
+            f"SELECT key, cache_type, data, timestamp FROM history "
+            f"WHERE key IN ({placeholders}) AND timestamp >= ? "
+            f"ORDER BY timestamp ASC LIMIT ?"
+        )
+
+        with self._lock:
+            rows = self._conn.execute(query, (*clean_keys, cutoff, safe_limit)).fetchall()
+
+        points: list[Dict[str, Any]] = []
+        for key, cache_type, data_str, timestamp in rows:
+            try:
+                data = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            points.append(
+                {
+                    "key": key,
+                    "cache_type": cache_type,
+                    "timestamp": timestamp,
+                    "data": data,
+                }
+            )
+        return points
 
     def get_threat_level(self, alerts: list) -> str:
         """
@@ -277,10 +336,12 @@ class WeatherCache:
         """Get cache statistics."""
         with self._lock:
             count = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+            history_count = self._conn.execute("SELECT COUNT(*) FROM history").fetchone()[0]
             size_bytes = self.db_path.stat().st_size if self.db_path.exists() else 0
 
         return {
             "entries": count,
+            "history_entries": history_count,
             "size_bytes": size_bytes,
             "size_mb": round(size_bytes / (1024 * 1024), 3),
         }

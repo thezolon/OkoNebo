@@ -396,6 +396,46 @@ async def _get_or_refresh_shared(
             raise
 
 
+async def get_current_history(lat: float, lon: float, hours: int = 6) -> dict[str, Any]:
+    safe_hours = max(1, min(int(hours), 24))
+    keys = {
+        f"current:{lat},{lon}": "nws",
+        f"weatherapi-current:{lat},{lon}": "weatherapi",
+        f"tomorrow-current:{lat},{lon}": "tomorrow",
+        f"visualcrossing-current:{lat},{lon}": "visualcrossing",
+        f"meteomatics-current:{lat},{lon}": "meteomatics",
+    }
+    points = _cache._db.get_history(list(keys.keys()), hours=safe_hours)
+
+    normalized: list[dict[str, Any]] = []
+    for item in points:
+        data = item.get("data") if isinstance(item.get("data"), dict) else {}
+        key = str(item.get("key") or "")
+        normalized.append(
+            {
+                "timestamp": item.get("timestamp"),
+                "source": keys.get(key) or str(item.get("cache_type") or "current"),
+                "temp_f": data.get("temp_f"),
+                "feels_like_f": data.get("feels_like_f"),
+                "humidity": data.get("humidity"),
+                "pressure_inhg": data.get("pressure_inhg"),
+                "wind_speed_mph": data.get("wind_speed_mph"),
+                "wind_direction": data.get("wind_direction"),
+                "wind_gust_mph": data.get("wind_gust_mph"),
+                "dewpoint_f": data.get("dewpoint_f"),
+                "visibility_miles": data.get("visibility_miles"),
+                "description": data.get("description"),
+                "station": data.get("station"),
+            }
+        )
+
+    return {
+        "hours": safe_hours,
+        "points": normalized,
+        "updated_at": time.time(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Point resolution (cached 24 h)
 # ---------------------------------------------------------------------------
