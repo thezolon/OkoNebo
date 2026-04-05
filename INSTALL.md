@@ -245,6 +245,43 @@ Always read `RELEASE_NOTES_v*.md` for breaking changes before upgrading across m
 
 ---
 
+## Home Assistant integration
+
+OkoNebo provides HA-friendly endpoints using existing auth and token controls.
+
+### Endpoint overview
+
+- `GET /api/ha/sensor` - sensor-shaped payload including threat level, alerts count, current metrics, and optional AQI/astro attributes
+- `GET /api/ha/weather` - weather-entity-shaped payload with current condition plus forecast list
+
+### Quick REST sensor example
+
+```yaml
+sensor:
+  - platform: rest
+    name: okonebo_threat_level
+    resource: http://YOUR_HOST:8888/api/ha/sensor
+    value_template: "{{ value_json.state }}"
+    json_attributes:
+      - alerts_count
+      - max_alert_severity
+      - temperature
+      - humidity
+      - pressure
+      - wind_speed
+```
+
+If auth is enabled, include your bearer token in request headers:
+
+```yaml
+    headers:
+      Authorization: "Bearer YOUR_TOKEN"
+```
+
+This threat-level sensor (`normal` / `approaching` / `active`) can be used directly in automations.
+
+---
+
 ## Backups
 
 Before major upgrades, take a quick backup of runtime state:

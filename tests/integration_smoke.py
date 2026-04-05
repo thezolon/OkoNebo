@@ -97,6 +97,21 @@ def main() -> int:
             ensure("aqi" in payload, "aqi payload must include aqi field")
             ensure("components" in payload, "aqi payload must include components")
 
+    def check_ha_sensor() -> None:
+        status, payload = fetch_json("/api/ha/sensor")
+        ensure(status == 200, "ha sensor status must be 200")
+        ensure(isinstance(payload, dict), "ha sensor payload must be object")
+        ensure("state" in payload, "ha sensor must include state")
+        ensure("threat_level" in payload, "ha sensor must include threat_level")
+        ensure("alerts_count" in payload, "ha sensor must include alerts_count")
+
+    def check_ha_weather() -> None:
+        status, payload = fetch_json("/api/ha/weather")
+        ensure(status == 200, "ha weather status must be 200")
+        ensure(isinstance(payload, dict), "ha weather payload must be object")
+        ensure("condition" in payload, "ha weather must include condition")
+        ensure("forecast" in payload, "ha weather must include forecast")
+
     checks.extend([
         ("/api/config", check_config),
         ("/api/current", check_current),
@@ -105,6 +120,8 @@ def main() -> int:
         ("/api/bootstrap", check_bootstrap),
         ("/api/astro", check_astro),
         ("/api/aqi", check_aqi),
+        ("/api/ha/sensor", check_ha_sensor),
+        ("/api/ha/weather", check_ha_weather),
     ])
 
     for name, fn in checks:

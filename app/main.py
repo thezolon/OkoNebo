@@ -132,6 +132,8 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
     "/api/owm": "weather.read",
     "/api/pws": "weather.read",
     "/api/pws/trend": "weather.read",
+    "/api/ha/sensor": "weather.read",
+    "/api/ha/weather": "weather.read",
     "/api/stats": "stats.read",
     "/api/debug": "debug.read",
     "/api/capabilities": "config.read",
@@ -673,6 +675,82 @@ def _annotate_provider_source(endpoint: str, provider_id: str, payload: Any) -> 
             if isinstance(item, dict):
                 item.setdefault("source", provider_id)
     return payload
+
+
+def _ha_condition_from_text(raw: Any) -> str:
+    text = str(raw or "").strip().lower()
+    if not text:
+        return "unknown"
+    if "thunder" in text:
+        return "lightning-rainy"
+    if "snow" in text or "flurr" in text or "sleet" in text:
+        return "snowy"
+    if "rain" in text or "drizzle" in text or "shower" in text:
+        return "rainy"
+    if "fog" in text or "mist" in text or "haze" in text:
+        return "fog"
+    if "partly" in text and "cloud" in text:
+        return "partlycloudy"
+    if "mostly" in text and "cloud" in text:
+        return "cloudy"
+    if "cloud" in text or "overcast" in text:
+        return "cloudy"
+    if "clear" in text or "sun" in text:
+        return "sunny"
+    return "unknown"
+
+
+def _ha_wind_bearing(raw: Any) -> Any:
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    text = str(raw).strip().upper()
+    try:
+        return int(float(text))
+    except Exception:
+        pass
+    cardinal_map = {
+        "N": 0,
+        "NNE": 22,
+        "NE": 45,
+        "ENE": 67,
+        "E": 90,
+        "ESE": 112,
+        "SE": 135,
+        "SSE": 157,
+        "S": 180,
+        "SSW": 202,
+        "SW": 225,
+        "WSW": 247,
+        "W": 270,
+        "WNW": 292,
+        "NW": 315,
+        "NNW": 337,
+    }
+    return cardinal_map.get(text)
+
+
+def _ha_threat_level(alerts: list[dict[str, Any]]) -> tuple[str, str, int]:
+    if not alerts:
+        return ("normal", "none", 0)
+
+    severity_rank = {"extreme": 4, "severe": 3, "moderate": 2, "minor": 1, "unknown": 0}
+    max_rank = 0
+    max_severity = "unknown"
+
+    for alert in alerts:
+        sev = str(alert.get("severity") or "unknown").strip().lower()
+        rank = severity_rank.get(sev, 0)
+        if rank > max_rank:
+            max_rank = rank
+            max_severity = sev
+
+    if max_rank >= 3:
+        return ("active", max_severity, len(alerts))
+    if max_rank >= 1:
+        return ("approaching", max_severity, len(alerts))
+    return ("normal", max_severity, len(alerts))
 
 
 async def _provider_attempt(
@@ -1292,6 +1370,8 @@ async def api_capabilities():
             {"name": "get_tides", "endpoint": "/api/tides", "scope": "weather.read"},
             {"name": "get_pws", "endpoint": "/api/pws", "scope": "weather.read"},
             {"name": "get_pws_trend", "endpoint": "/api/pws/trend", "scope": "weather.read"},
+            {"name": "get_ha_sensor", "endpoint": "/api/ha/sensor", "scope": "weather.read"},
+            {"name": "get_ha_weather", "endpoint": "/api/ha/weather", "scope": "weather.read"},
             {"name": "get_stats", "endpoint": "/api/stats", "scope": "stats.read"},
             {"name": "get_debug", "endpoint": "/api/debug", "scope": "debug.read"},
         ],
@@ -1791,6 +1871,137 @@ async def api_aqi():
                 "timestamp": None,
             },
         )
+
+
+@app.get(
+    "/api/ha/sensor",
+    summary="Home Assistant sensor payload",
+    description=(
+        "HA-friendly sensor payload containing current conditions, threat-level state, "
+        "alert metadata, and optional AQI/astronomy attributes. Always returns 200 "
+        "with availability/error flags for automation stability."
+    ),
+    tags=["Integrations"],
+)
+async def api_ha_sensor():
+    current: dict[str, Any] = {}
+    alerts: list[dict[str, Any]] = []
+    aqi_payload: dict[str, Any] = {}
+    astro_payload: dict[str, Any] = {}
+    errors: dict[str, Any] = {}
+
+    try:
+        current = await api_current()
+    except HTTPException as exc:
+        errors["current"] = exc.detail
+
+    try:
+        alerts = await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
+    except Exception as exc:
+        errors["alerts"] = str(exc)
+
+    try:
+        if PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY:
+            aqi_payload = await wc.get_owm_aqi(LAT, LON, OWM_KEY)
+            aqi_payload["available"] = True
+        else:
+            aqi_payload = {"available": False}
+    except Exception as exc:
+        errors["aqi"] = str(exc)
+
+    try:
+        astro_payload = await api_astro()
+    except Exception as exc:
+        errors["astro"] = str(exc)
+
+    threat_level, max_severity, alerts_count = _ha_threat_level(alerts)
+    headlines = [str(a.get("headline") or a.get("event") or "").strip() for a in alerts][:5]
+
+    return {
+        "state": threat_level,
+        "available": "current" not in errors,
+        "threat_level": threat_level,
+        "alerts_count": alerts_count,
+        "max_alert_severity": max_severity,
+        "location": {
+            "label": LABEL,
+            "lat": LAT,
+            "lon": LON,
+            "timezone": TIMEZONE,
+        },
+        "temperature": current.get("temp_f"),
+        "humidity": current.get("humidity"),
+        "pressure": current.get("pressure_inhg"),
+        "wind_speed": current.get("wind_speed_mph"),
+        "wind_bearing": _ha_wind_bearing(current.get("wind_direction")),
+        "condition": _ha_condition_from_text(current.get("description")),
+        "alerts": headlines,
+        "attributes": {
+            "source": current.get("source"),
+            "station": current.get("station"),
+            "feels_like_f": current.get("feels_like_f"),
+            "dewpoint_f": current.get("dewpoint_f"),
+            "aqi": aqi_payload.get("aqi") if isinstance(aqi_payload, dict) else None,
+            "aqi_available": bool(aqi_payload.get("available")) if isinstance(aqi_payload, dict) else False,
+            "sunrise": astro_payload.get("sunrise") if isinstance(astro_payload, dict) else None,
+            "sunset": astro_payload.get("sunset") if isinstance(astro_payload, dict) else None,
+            "moon_phase": astro_payload.get("moon_phase") if isinstance(astro_payload, dict) else None,
+            "error": errors or None,
+        },
+    }
+
+
+@app.get(
+    "/api/ha/weather",
+    summary="Home Assistant weather entity payload",
+    description=(
+        "HA weather-entity payload containing current condition, measurements, and "
+        "forecast list. Always returns 200 with availability/error fields for "
+        "integration stability."
+    ),
+    tags=["Integrations"],
+)
+async def api_ha_weather():
+    current: dict[str, Any] = {}
+    forecast: list[dict[str, Any]] = []
+    errors: dict[str, Any] = {}
+
+    try:
+        current = await api_current()
+    except HTTPException as exc:
+        errors["current"] = exc.detail
+
+    try:
+        forecast = await api_forecast()
+    except HTTPException as exc:
+        errors["forecast"] = exc.detail
+
+    ha_forecast: list[dict[str, Any]] = []
+    for item in forecast[:14]:
+        if not isinstance(item, dict):
+            continue
+        ha_forecast.append(
+            {
+                "datetime": item.get("start_time") or item.get("startTime"),
+                "condition": _ha_condition_from_text(item.get("short_forecast") or item.get("shortForecast")),
+                "temperature": item.get("temperature"),
+                "templow": None,
+                "precipitation_probability": item.get("precip_probability"),
+            }
+        )
+
+    return {
+        "available": "current" not in errors,
+        "temperature": current.get("temp_f"),
+        "humidity": current.get("humidity"),
+        "pressure": current.get("pressure_inhg"),
+        "wind_speed": current.get("wind_speed_mph"),
+        "wind_bearing": _ha_wind_bearing(current.get("wind_direction")),
+        "condition": _ha_condition_from_text(current.get("description")),
+        "forecast": ha_forecast,
+        "attribution": "Data provided by OkoNebo",
+        "error": errors or None,
+    }
 
 
 @app.get(
