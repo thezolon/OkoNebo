@@ -310,6 +310,9 @@ def _apply_config(cfg: dict[str, Any]) -> None:
 
     # .env overrides keep deploy secrets out of config.yaml for open-source use.
     OWM_KEY = _provider_api_key("openweather") or str(cfg.get("openweather", {}).get("api_key", ""))
+    
+    # PWS = The Weather Company Personal Weather Station API (https://twcapi.co/)
+    # Configured provider is typically "weather.com"; API key stored in SECURE_STORE
     PWS_PROVIDER = str(runtime_pws.get("provider") or cfg.get("pws", {}).get("provider", "weather.com"))
     PWS_KEY = _provider_api_key("pws") or str(cfg.get("pws", {}).get("api_key", ""))
     PWS_STATIONS = list(runtime_pws.get("stations") or cfg.get("pws", {}).get("stations", []) or [])
@@ -1805,6 +1808,9 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
         if "user_agent" in payload:
             cfg["user_agent"] = _sanitize_user_agent(payload.get("user_agent"), cfg.get("user_agent") or USER_AGENT)
 
+        # PWS (The Weather Company Personal Weather Station API) configuration
+        # https://twcapi.co/ - provider and stations in config.yaml (non-secrets),
+        # api_key stored encrypted in SECURE_STORE for security
         pws_payload = payload.get("pws", {}) if isinstance(payload.get("pws", {}), dict) else {}
         pws_cfg = cfg.get("pws", {}) if isinstance(cfg.get("pws", {}), dict) else {}
         if "provider" in pws_payload:

@@ -1626,7 +1626,8 @@ def _norm_pws_observation(station_id: str, raw: dict) -> dict:
 
 async def get_pws_observations(provider: str, station_ids: list[str], api_key: str) -> dict:
     """
-    Fetch latest observations for configured PWS station IDs.
+    Fetch latest observations for configured PWS (Personal Weather Station) station IDs
+    from The Weather Company API (https://twcapi.co/v2PWSO).
     Returns partial results if one station fails.
     Cached 2 minutes.
     """
@@ -1724,6 +1725,12 @@ def _norm_pws_history(station_id: str, raw: dict, hours: int) -> dict:
 
 
 async def get_pws_trend(provider: str, station_ids: list[str], api_key: str, hours: int = 3) -> dict:
+    """
+    Fetch historical trend data for configured PWS stations from The Weather Company API
+    (https://twcapi.co/v2PWSRHHH - hourly history).
+    Returns partial results if one station fails.
+    Cached 5 minutes.
+    """
     provider_name = (provider or "weather.com").lower()
     if provider_name not in {"weather.com", "wunderground", "wu"}:
         raise ValueError(f"Unsupported PWS provider: {provider}")

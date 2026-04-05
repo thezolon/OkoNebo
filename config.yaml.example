@@ -42,6 +42,26 @@ map_provider: esri
 # See .env.example for the full variable list.
 
 # ---------------------------------------------------------------------------
+# Personal Weather Station (PWS) API - The Weather Company
+# ---------------------------------------------------------------------------
+# Enables integration with personal weather stations via the Weather.com API.
+# This provider fetches observations from PWS stations you own or have access to.
+# 
+# Requires:
+#   - API key from https://feedback.weather.com/?b_id=17298#ask (Weather Company PWS API)
+#   - One or more station IDs in the format: KOKPRAGU2, etc.
+#   - Station provider (typically "weather.com")
+#
+# Documentation: https://twcapi.co/APICUG
+#
+# pws:
+#   provider: weather.com          # PWS API provider (currently weather.com only)
+#   stations:                       # List of station IDs to monitor
+#     - KOKPRAGU2
+#     - KOKPRAGU20
+#   api_key: ""                     # Encrypted in secure_settings.db when set via UI
+
+# ---------------------------------------------------------------------------
 # Provider API keys (optional)
 # ---------------------------------------------------------------------------
 # Keys here are overridden by values in secure_settings.db (set via UI).
