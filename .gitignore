@@ -16,3 +16,6 @@ secure_settings.db
 OkoNebo-*.tar.gz
 OkoNebo-*.zip
 release-*-checksums.sha256
+
+# local-only agent handoff/checklists
+AI_AGENT_TODO.local.md
