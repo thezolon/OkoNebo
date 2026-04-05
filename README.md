@@ -258,3 +258,4 @@ Security issues: see [SECURITY.md](SECURITY.md) for the responsible disclosure p
 - [RainViewer](https://www.rainviewer.com/)
 - [Leaflet](https://leafletjs.com/)
 - [Chart.js](https://www.chartjs.org/)
+- [GitHub Copilot](https://github.com/features/copilot) - AI pair programmer; this project wouldn't have gotten this far without it
