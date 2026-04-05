@@ -79,7 +79,6 @@ Remaining Low-severity findings are confirmed false positives (Bandit misidentif
 The following was verified manually before the v1.0.0 tag:
 
 - No API keys, credentials, or secrets present in any tracked file or git history.
-- `config.yaml`, `.env`, `cache.db`, and `secure_settings.db` confirmed absent from all commits.
 - CORS `allow_credentials` not set (wildcard `allow_origins=["*"]` is safe without credentials).
 - No debug mode or `reload=True` in production startup path.
 - `/api/debug/client` payload size capped at 64 KB to prevent memory exhaustion.
