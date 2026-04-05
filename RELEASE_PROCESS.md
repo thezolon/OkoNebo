@@ -83,22 +83,11 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-### Checksums
-
-Generate SHA-256 checksums of the release artifacts:
-
-```bash
-bash scripts/checksums.sh vX.Y.Z
-```
-
-This produces `release-vX.Y.Z-checksums.sha256` in the project root.
-
 ### GitHub Release
 
 Create a GitHub Release from the tag:
 - Title: `vX.Y.Z`
 - Body: contents of `RELEASE_NOTES_vX.Y.Z.md`
-- Attach `release-vX.Y.Z-checksums.sha256`
 
 ---
 

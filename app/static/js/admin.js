@@ -36,6 +36,19 @@ const PULL_CYCLE_LABELS = {
     noaa_tides: 'NOAA Tides',
 };
 
+const TIMEZONE_FALLBACK_OPTIONS = [
+    'UTC',
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Los_Angeles',
+    'Europe/London',
+    'Europe/Berlin',
+    'Asia/Tokyo',
+    'Asia/Kolkata',
+    'Australia/Sydney',
+];
+
 function estimateCallsPerHour(seconds) {
     const safe = Math.max(1, Number(seconds) || 1);
     return Math.round((3600 / safe) * 10) / 10;
@@ -60,6 +73,44 @@ function clampCycle(seconds) {
     const raw = Number(seconds);
     if (!Number.isFinite(raw)) return min;
     return Math.min(max, Math.max(min, Math.round(raw)));
+}
+
+function getAvailableTimezones() {
+    try {
+        if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+            const zones = Intl.supportedValuesOf('timeZone');
+            if (Array.isArray(zones) && zones.length > 0) {
+                const sorted = zones.slice().sort((a, b) => a.localeCompare(b));
+                if (!sorted.includes('UTC')) sorted.unshift('UTC');
+                return sorted;
+            }
+        }
+    } catch (_) {
+        // Fall back to a short common list when browser support is missing.
+    }
+    return TIMEZONE_FALLBACK_OPTIONS.slice();
+}
+
+function resolveBrowserTimezone() {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (_) {
+        return 'UTC';
+    }
+}
+
+function populateTimezoneSelect(elementId, selectedValue) {
+    const el = document.getElementById(elementId);
+    if (!el || el.tagName !== 'SELECT') return;
+
+    const zones = getAvailableTimezones();
+    const preferred = String(selectedValue || '').trim() || resolveBrowserTimezone();
+    const options = zones.includes(preferred) ? zones : [preferred, ...zones];
+
+    el.innerHTML = options
+        .map((zone) => `<option value="${zone}">${zone}</option>`)
+        .join('');
+    el.value = options.includes(preferred) ? preferred : 'UTC';
 }
 
 function setupPullCycleListeners() {
@@ -338,7 +389,7 @@ function fillSettings(settings) {
     document.getElementById('setup-work-label').value = work.label || '';
     document.getElementById('setup-work-lat').value = work.lat ?? '';
     document.getElementById('setup-work-lon').value = work.lon ?? '';
-    document.getElementById('setup-timezone').value = settings?.location?.timezone || '';
+    populateTimezoneSelect('setup-timezone', settings?.location?.timezone || 'UTC');
     document.getElementById('setup-user-agent').value = settings?.user_agent || '';
     document.getElementById('setup-map-provider').value = settings?.map?.provider || 'esri_street';
     document.getElementById('setup-pws-provider').value = settings?.pws?.provider || 'weather.com';
@@ -773,6 +824,8 @@ async function testAllProviders() {
 }
 
 async function init() {
+    populateTimezoneSelect('setup-timezone');
+
     document.getElementById('admin-login-btn').addEventListener('click', login);
     document.getElementById('admin-logout-btn').addEventListener('click', logout);
     document.getElementById('setup-save-btn').addEventListener('click', saveSettings);

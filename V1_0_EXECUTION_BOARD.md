@@ -20,19 +20,32 @@ Ship a public, self-hostable, open-source OkoNebo `v1.0.0` with:
 - M4: Security + Quality + CI
 - M5: OSS Packaging + Release
 
+## Status Reconciliation (2026-04-04)
+
+Board status has been aligned with completed delivery phases recorded in `PROGRESS_LOG.md`:
+- M1: complete
+- M2: complete
+- M3: complete
+- M4: complete
+- M5: in progress
+
+Execution note:
+- The detailed backlog tables below are retained as historical planning structure.
+- Release execution and final gating are now tracked primarily under E9 and the release checklist in `RELEASE_PROCESS.md`.
+
 ## Epic Board
 | Epic ID | Epic | Priority | Status | Milestone |
 |---|---|---|---|---|
-| E1 | Core Refactor and Module Boundaries | Must-Have | Not Started | M1 |
-| E2 | Provider Framework and Defaults | Must-Have | In Progress | M1 |
-| E3 | First-Run Wizard + Settings Completion | Must-Have | In Progress | M2 |
-| E4 | Optional Auth Roles and Access Guarding | Must-Have | In Progress | M2 |
-| E5 | External Provider Adapter Implementation | Must-Have | Not Started | M3 |
-| E6 | Security Hardening and Leak Prevention | Must-Have | In Progress | M4 |
-| E7 | Test Strategy and CI Gates | Must-Have | Not Started | M4 |
-| E8 | OSS Repo Readiness and Governance | Must-Have | Not Started | M5 |
-| E9 | Release Engineering and v1.0 Cut | Must-Have | Not Started | M5 |
-| E10 | Stretch UX/Operations Enhancements | Nice-to-Have | Not Started | M5+ |
+| E1 | Core Refactor and Module Boundaries | Must-Have | Complete | M1 |
+| E2 | Provider Framework and Defaults | Must-Have | Complete | M1 |
+| E3 | First-Run Wizard + Settings Completion | Must-Have | Complete | M2 |
+| E4 | Optional Auth Roles and Access Guarding | Must-Have | Complete | M2 |
+| E5 | External Provider Adapter Implementation | Must-Have | Complete | M3 |
+| E6 | Security Hardening and Leak Prevention | Must-Have | Complete | M4 |
+| E7 | Test Strategy and CI Gates | Must-Have | Complete | M4 |
+| E8 | OSS Repo Readiness and Governance | Must-Have | Complete | M5 |
+| E9 | Release Engineering and v1.0 Cut | Must-Have | In Progress | M5 |
+| E10 | Stretch UX/Operations Enhancements | Nice-to-Have | In Progress | M5+ |
 
 ## Task Backlog (Tracked)
 
@@ -108,7 +121,7 @@ Ship a public, self-hostable, open-source OkoNebo `v1.0.0` with:
 |---|---|---|---|---|
 | T9.1 | Release candidate branch + freeze policy | Must-Have | E1-E8 mostly complete | Scope frozen except fixes |
 | T9.2 | Final package checks (health + leak + CI green) | Must-Have | T7.4, T6.1 | All release gates pass |
-| T9.3 | Tag `v1.0.0`, publish notes + checksums | Must-Have | T9.2 | Reproducible release published |
+| T9.3 | Tag `v1.0.0`, publish release notes | Must-Have | T9.2 | Release published with complete notes and artifacts |
 | T9.4 | 72-hour post-release triage and hotfix policy | Must-Have | T9.3 | Early adopter support plan active |
 
 ### E10: Stretch UX/Operations Enhancements
@@ -159,8 +172,8 @@ All of the following must be complete:
 - Definition of done per task: code + tests + docs updated
 
 ## Immediate Next 5 Tasks
-1. T1.1 frontend module split
-2. T1.2 backend route split
-3. T3.1 first-run blocking setup UX completion
-4. T4.3 strict admin-only settings write enforcement tests
-5. T5.1 Tomorrow.io adapter implementation
+1. T9.1 Create `release/v1.0.0` branch and enforce freeze policy
+2. T9.2 Run full harness and verify all gates pass on release branch
+3. T9.2 Run clean-machine first-run manual validation from `INSTALL.md`
+4. T9.3 Tag `v1.0.0` and publish GitHub release notes
+5. T9.4 Start 72-hour post-release triage window and severity-based response

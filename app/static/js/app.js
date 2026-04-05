@@ -56,6 +56,19 @@ const PWS_NAMES = {
     KOKPRAGU2: 'ZOldHouse',
 };
 
+const TIMEZONE_FALLBACK_OPTIONS = [
+    'UTC',
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Los_Angeles',
+    'Europe/London',
+    'Europe/Berlin',
+    'Asia/Tokyo',
+    'Asia/Kolkata',
+    'Australia/Sydney',
+];
+
 const RADAR_DEFAULT_ZOOM = 8;
 const RADAR_DEFAULT_ZOOM_RAINVIEWER = 7;
 const RADAR_MAX_NATIVE_ZOOM = 12;
@@ -156,6 +169,44 @@ function setStoredAuthToken(token) {
     } catch (err) {
         // Ignore storage failures
     }
+}
+
+function getAvailableTimezones() {
+    try {
+        if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+            const zones = Intl.supportedValuesOf('timeZone');
+            if (Array.isArray(zones) && zones.length > 0) {
+                const sorted = zones.slice().sort((a, b) => a.localeCompare(b));
+                if (!sorted.includes('UTC')) sorted.unshift('UTC');
+                return sorted;
+            }
+        }
+    } catch (_) {
+        // Fall back to a short common list when browser support is missing.
+    }
+    return TIMEZONE_FALLBACK_OPTIONS.slice();
+}
+
+function resolveBrowserTimezone() {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (_) {
+        return 'UTC';
+    }
+}
+
+function populateTimezoneSelect(elementId, selectedValue) {
+    const el = document.getElementById(elementId);
+    if (!el || el.tagName !== 'SELECT') return;
+
+    const zones = getAvailableTimezones();
+    const preferred = String(selectedValue || '').trim() || resolveBrowserTimezone();
+    const options = zones.includes(preferred) ? zones : [preferred, ...zones];
+
+    el.innerHTML = options
+        .map((zone) => `<option value="${zone}">${zone}</option>`)
+        .join('');
+    el.value = options.includes(preferred) ? preferred : 'UTC';
 }
 
 function readPanelCollapseState() {
@@ -2588,6 +2639,7 @@ function showFirstRunOverlay() {
     const overlay = document.getElementById('firstrun-overlay');
     if (!overlay) return;
     overlay.classList.remove('hidden');
+    populateTimezoneSelect('fr-timezone');
     // Pre-populate from existing config if available
     fetchAPIDeduped('/settings').then(settings => {
         const home = settings?.location?.home || {};
@@ -2596,7 +2648,7 @@ function showFirstRunOverlay() {
         _set('fr-home-label', home.label);
         _set('fr-home-lat', home.lat);
         _set('fr-home-lon', home.lon);
-        _set('fr-timezone', settings?.location?.timezone);
+        populateTimezoneSelect('fr-timezone', settings?.location?.timezone);
         _set('fr-work-label', work.label);
         _set('fr-work-lat', work.lat);
         _set('fr-work-lon', work.lon);
@@ -2705,7 +2757,7 @@ async function loadSetupSettings() {
         document.getElementById('setup-work-label').value = work.label || '';
         document.getElementById('setup-work-lat').value = work.lat ?? '';
         document.getElementById('setup-work-lon').value = work.lon ?? '';
-        document.getElementById('setup-timezone').value = settings?.location?.timezone || '';
+        populateTimezoneSelect('setup-timezone', settings?.location?.timezone || 'UTC');
         document.getElementById('setup-user-agent').value = settings?.user_agent || '';
         document.getElementById('setup-map-provider').value = settings?.map?.provider || 'esri_street';
         document.getElementById('setup-pws-provider').value = settings?.pws?.provider || 'weather.com';
@@ -2918,6 +2970,8 @@ async function logoutSession() {
 
 function setupControls() {
     _wireFirstRunOverlay();
+    populateTimezoneSelect('fr-timezone');
+    populateTimezoneSelect('setup-timezone');
 
     const setupToggleBtn = document.getElementById('setup-toggle-btn');
     if (setupToggleBtn) {
