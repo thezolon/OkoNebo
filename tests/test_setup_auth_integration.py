@@ -210,6 +210,41 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("up to 10", resp.text)
 
+    def test_test_provider_supports_pws(self):
+        main.AUTH_ENABLED = False
+        main.PROVIDERS["pws"]["enabled"] = True
+
+        original = main.wc.get_pws_observations
+
+        async def fake_get_pws_observations(provider: str, station_ids: list[str], api_key: str) -> dict:
+            self.assertEqual(provider, "weather.com")
+            self.assertEqual(station_ids, ["KOKPRAGU2", "KOKPRAGU20"])
+            self.assertEqual(api_key, "test-key")
+            return {
+                "provider": provider,
+                "stations": [{"station_id": station_ids[0], "temp_f": 72.0}],
+                "errors": [],
+            }
+
+        main.wc.get_pws_observations = fake_get_pws_observations
+        try:
+            resp = self.client.get(
+                "/api/test-provider",
+                params={
+                    "provider": "pws",
+                    "api_key": "test-key",
+                    "pws_provider": "weather.com",
+                    "pws_stations": "KOKPRAGU2, KOKPRAGU20",
+                },
+            )
+            self.assertEqual(resp.status_code, 200, resp.text)
+            payload = resp.json()
+            self.assertTrue(payload.get("ok"))
+            self.assertEqual(payload.get("provider"), "pws")
+            self.assertIn("PWS API responding", payload.get("message", ""))
+        finally:
+            main.wc.get_pws_observations = original
+
 
 if __name__ == "__main__":
     unittest.main()

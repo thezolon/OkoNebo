@@ -1979,6 +1979,31 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
         raise HTTPException(status_code=400, detail=f"Provider {provider} requires an API key but none is configured")
 
     try:
+        if provider == "pws":
+            pws_provider = str(request.query_params.get("pws_provider") if request else "" or "").strip() or PWS_PROVIDER
+            pws_stations_raw = str(request.query_params.get("pws_stations") if request else "" or "").strip()
+            pws_stations = _sanitize_pws_stations(
+                [part.strip() for part in pws_stations_raw.split(",") if part.strip()]
+            ) if pws_stations_raw else _sanitize_pws_stations(PWS_STATIONS)
+
+            if not test_api_key:
+                raise HTTPException(status_code=400, detail="Provider pws requires an API key but none is configured")
+            if not pws_stations:
+                raise HTTPException(status_code=400, detail="Provider pws requires at least one station ID")
+
+            pws_result = await wc.get_pws_observations(pws_provider, pws_stations, test_api_key)
+            station_count = len(pws_result.get("stations", []))
+            if station_count > 0:
+                return {
+                    "ok": True,
+                    "provider": provider,
+                    "message": f"PWS API responding ({station_count}/{len(pws_stations)} stations)",
+                    "data": pws_result,
+                }
+            errors = pws_result.get("errors", []) if isinstance(pws_result.get("errors", []), list) else []
+            first_error = str(errors[0].get("error")) if errors and isinstance(errors[0], dict) else "No stations returned"
+            raise HTTPException(status_code=502, detail=f"PWS test failed: {first_error}")
+
         result = await wc.test_provider(
             provider_id=provider,
             lat=LAT,

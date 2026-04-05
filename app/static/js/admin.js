@@ -694,10 +694,18 @@ async function testProvider(providerId) {
         const keyEl = document.getElementById(`setup-provider-${providerId}-key`);
         const formKey = keyEl?.value?.trim() || null;
 
-        let url = `/test-provider?provider=${encodeURIComponent(providerId)}`;
-        if (formKey) {
-            url += `&api_key=${encodeURIComponent(formKey)}`;
+        const params = new URLSearchParams({ provider: providerId });
+        if (formKey) params.set('api_key', formKey);
+
+        // PWS requires station IDs/provider from the setup form for useful test results.
+        if (providerId === 'pws') {
+            const pwsProvider = document.getElementById('setup-pws-provider')?.value?.trim();
+            const pwsStations = document.getElementById('setup-pws-stations')?.value?.trim();
+            if (pwsProvider) params.set('pws_provider', pwsProvider);
+            if (pwsStations) params.set('pws_stations', pwsStations);
         }
+
+        const url = `/test-provider?${params.toString()}`;
 
         const data = await api(url);
         if (resultEl) {
