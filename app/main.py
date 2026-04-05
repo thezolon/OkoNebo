@@ -958,8 +958,8 @@ async def api_capabilities():
     description="Machine-readable profile that agents can load to self-configure against OkoNebo.",
     tags=["Config"],
 )
-async def api_agent_profile():
-    base_url = "http://localhost:8888"
+async def api_agent_profile(request: Request):
+    base_url = str(request.base_url).rstrip("/")
     return {
         "service": "okonebo",
         "profile_version": AGENT_PROFILE_VERSION,
@@ -1996,8 +1996,20 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
         raise HTTPException(status_code=502, detail=f"Provider test error: {str(exc)}") from exc
 
 
+_DEBUG_CLIENT_MAX_BYTES = 65_536  # 64 KB
+
+
 @app.post("/api/debug/client", include_in_schema=False)
-async def api_debug_client(payload: dict[str, Any] = Body(...)):
+async def api_debug_client(request: Request):
+    body = await request.body()
+    if len(body) > _DEBUG_CLIENT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Payload too large")
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object")
     DEBUG_STATE["last_client_snapshot"] = payload
     DEBUG_STATE["last_client_update"] = int(time.time())
     return {"ok": True}
