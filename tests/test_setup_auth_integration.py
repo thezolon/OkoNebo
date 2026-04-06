@@ -341,6 +341,39 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("up to 10", resp.text)
 
+    def test_settings_keeps_runtime_admin_password_when_blank(self):
+        main.AUTH_ENABLED = True
+        main.AUTH_REQUIRE_VIEWER_LOGIN = False
+        main.FIRST_RUN_COMPLETE = False
+        main.AUTH_USERS = [
+            {
+                "username": "admin",
+                "role": "admin",
+                "password_hash": main._hash_password("existing-password-123"),
+            }
+        ]
+
+        resp = self.client.post(
+            "/api/settings",
+            json={
+                "location": {
+                    "home": {"lat": 36.1539, "lon": -95.9928, "label": "Home"},
+                    "timezone": "America/Chicago",
+                },
+                "auth": {
+                    "enabled": True,
+                    "require_viewer_login": False,
+                    "admin_username": "admin",
+                    "admin_password": "",
+                },
+                "mark_first_run_complete": True,
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        stored_users = main.SECURE_STORE.get_json("auth.users", [])
+        self.assertTrue(any(u.get("role") == "admin" and u.get("password_hash") for u in stored_users))
+
     def test_test_provider_supports_pws(self):
         main.AUTH_ENABLED = False
         main.PROVIDERS["pws"]["enabled"] = True
@@ -387,6 +420,40 @@ class SetupAuthIntegrationTests(unittest.TestCase):
             self.assertTrue(payload.get("ok"))
             self.assertEqual(payload.get("provider"), "pws")
             self.assertIn("PWS API responding", payload.get("message", ""))
+        finally:
+            main.wc.get_pws_observations = original
+
+    def test_test_provider_pws_uses_query_overrides(self):
+        main.AUTH_ENABLED = False
+        main.PROVIDERS["pws"]["enabled"] = True
+
+        original = main.wc.get_pws_observations
+
+        async def fake_get_pws_observations(provider: str, station_ids: list[str], api_key: str) -> dict:
+            self.assertEqual(provider, "weather.com")
+            self.assertEqual(station_ids, ["KOKPRAGU20", "KOKPRAGU2"])
+            self.assertEqual(api_key, "test-key")
+            return {
+                "provider": provider,
+                "stations": [{"station_id": station_ids[0], "temp_f": 72.0}],
+                "errors": [],
+            }
+
+        main.wc.get_pws_observations = fake_get_pws_observations
+        try:
+            resp = self.client.get(
+                "/api/test-provider",
+                params={
+                    "provider": "pws",
+                    "api_key": "test-key",
+                    "pws_provider": "weather.com",
+                    "pws_stations": "KOKPRAGU20, KOKPRAGU2",
+                },
+            )
+            self.assertEqual(resp.status_code, 200, resp.text)
+            payload = resp.json()
+            self.assertTrue(payload.get("ok"))
+            self.assertEqual(payload.get("provider"), "pws")
         finally:
             main.wc.get_pws_observations = original
 

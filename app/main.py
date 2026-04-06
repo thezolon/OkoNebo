@@ -31,7 +31,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pywebpush import WebPushException, webpush
 
@@ -2646,7 +2646,13 @@ def _apply_pws_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> dict[str
 def _apply_auth_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     auth_payload = payload.get("auth", {}) if isinstance(payload.get("auth", {}), dict) else {}
     auth_cfg = cfg.get("auth", {}) if isinstance(cfg.get("auth", {}), dict) else {}
-    users = list(auth_cfg.get("users", []) or [])
+    stored_auth_users = SECURE_STORE.get_json("auth.users", None)
+    if isinstance(stored_auth_users, list) and stored_auth_users:
+        users = list(stored_auth_users)
+    else:
+        users = list(auth_cfg.get("users", []) or [])
+    if not users:
+        users = list(AUTH_USERS or [])
 
     def upsert_user(role: str, username: str | None, password: str | None) -> None:
         if not username:
@@ -2689,13 +2695,25 @@ def _apply_auth_payload(payload: dict[str, Any], cfg: dict[str, Any]) -> tuple[d
 
     if auth_cfg.get("enabled"):
         has_admin = any(str(user.get("role")) == "admin" for user in users)
+        has_admin_password = any(
+            str(user.get("role")) == "admin" and bool(user.get("password_hash") or user.get("password"))
+            for user in users
+        )
+
+        # If auth is env-driven and persisted users are not initialized yet,
+        # bootstrap admin credentials from env so blank password saves can keep working.
+        if not has_admin_password:
+            env_admin_username = str(os.getenv("ADMIN_USERNAME") or "").strip()
+            env_admin_password = str(os.getenv("ADMIN_PASSWORD") or "").strip()
+            if env_admin_username and env_admin_password:
+                upsert_user("admin", env_admin_username, env_admin_password)
+                has_admin = True
+                has_admin_password = True
+
         if not has_admin:
             raise HTTPException(status_code=400, detail="At least one admin user is required when auth is enabled")
-        for user in users:
-            if str(user.get("role")) == "admin":
-                has_password = bool(user.get("password_hash") or user.get("password"))
-                if not has_password:
-                    raise HTTPException(status_code=400, detail="Admin password is required when auth is enabled")
+        if not has_admin_password:
+            raise HTTPException(status_code=400, detail="Admin password is required when auth is enabled")
 
     auth_cfg["users"] = users
     auth_cfg["token_secret"] = str(auth_cfg.get("token_secret") or secrets.token_hex(24))
@@ -2823,7 +2841,14 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
     if provider not in PROVIDER_IDS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
-    if not PROVIDERS.get(provider, {}).get("enabled"):
+    enabled_override: str | None = None
+    if request:
+        enabled_override = request.query_params.get("enabled")
+    is_enabled_for_test = PROVIDERS.get(provider, {}).get("enabled")
+    if enabled_override is not None:
+        is_enabled_for_test = str(enabled_override).strip().lower() in {"1", "true", "yes", "on"}
+
+    if not is_enabled_for_test:
         raise HTTPException(status_code=400, detail=f"Provider {provider} is not enabled")
 
     # Get API key: from parameter (unsaved form), then from persistent storage
@@ -2836,18 +2861,27 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
 
     try:
         if provider == "pws":
+            pws_provider_override = str(request.query_params.get("pws_provider") or "").strip() if request else ""
+            pws_stations_override = str(request.query_params.get("pws_stations") or "").strip() if request else ""
+            pws_provider_for_test = pws_provider_override or PWS_PROVIDER
+            pws_stations_for_test = (
+                [s.strip() for s in pws_stations_override.split(",") if s.strip()]
+                if pws_stations_override
+                else list(PWS_STATIONS)
+            )
+
             if not test_api_key:
                 raise HTTPException(status_code=400, detail="Provider pws requires an API key but none is configured")
-            if not PWS_STATIONS:
+            if not pws_stations_for_test:
                 raise HTTPException(status_code=400, detail="Provider pws requires at least one station ID")
 
-            pws_result = await wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, test_api_key)
+            pws_result = await wc.get_pws_observations(pws_provider_for_test, pws_stations_for_test, test_api_key)
             station_count = len(pws_result.get("stations", []))
             if station_count > 0:
                 return {
                     "ok": True,
                     "provider": provider,
-                    "message": f"PWS API responding ({station_count}/{len(PWS_STATIONS)} stations)",
+                    "message": f"PWS API responding ({station_count}/{len(pws_stations_for_test)} stations)",
                     "data": pws_result,
                 }
             errors = pws_result.get("errors", []) if isinstance(pws_result.get("errors", []), list) else []
@@ -2928,4 +2962,22 @@ async def owm_tile_proxy(layer: str, z: int, x: int, y: int):
 # ---------------------------------------------------------------------------
 
 _STATIC = Path(__file__).parent / "static"
+
+
+@app.get("/admin.html", include_in_schema=False)
+async def admin_html_no_cache():
+    return FileResponse(
+        _STATIC / "admin.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
+
+
+@app.get("/js/admin.js", include_in_schema=False)
+async def admin_js_no_cache():
+    return FileResponse(
+        _STATIC / "js" / "admin.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
+
 app.mount("/", StaticFiles(directory=str(_STATIC), html=True), name="static")

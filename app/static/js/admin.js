@@ -714,6 +714,7 @@ async function testProvider(providerId) {
         const formKey = keyEl?.value?.trim() || null;
 
         const params = new URLSearchParams({ provider: providerId });
+        params.set('enabled', enabledEl?.checked ? 'true' : 'false');
         if (formKey) params.set('api_key', formKey);
 
         // PWS requires station IDs/provider from the setup form for useful test results.
@@ -904,7 +905,11 @@ async function init() {
     await loadAuthConfig();
     await loadAuthMe();
     await loadSettings();
-    await loadAgentTokens();
+    if (!AUTH_MODE.enabled || getToken()) {
+        await loadAgentTokens();
+    } else {
+        setStatus('agent-token-status', 'Admin login required to manage agent tokens.', 'warn');
+    }
     await loadObservability();
     startObservabilityPolling();
 }
