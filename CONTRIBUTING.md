@@ -61,7 +61,7 @@ All keys can also be entered through the in-app Setup panel and are encrypted at
 ```bash
 # Unit tests only (no Docker required)
 source .venv-test/bin/activate
-python -m pytest tests/ -v
+python -m unittest discover -s tests -p "test_*.py" -v
 
 # Full harness (Docker required)
 bash scripts/test_harness.sh
@@ -71,6 +71,19 @@ HARNESS_SKIP_DOCKER=1 bash scripts/test_harness.sh
 ```
 
 All PRs are gated on CI (`.github/workflows/ci.yml`). Failing checks block merge.
+
+## Documentation Maintenance
+
+When adding or changing features, update docs in the same PR:
+
+1. Update user-facing behavior in [README.md](README.md) and feature docs under [docs/](docs/README.md).
+2. Update endpoint changes in [docs/api-reference.md](docs/api-reference.md).
+3. Update implementation details in [docs/implementation.md](docs/implementation.md) when architecture/runtime behavior changes.
+4. Run markdown link validation locally before pushing:
+
+```bash
+python scripts/check_markdown_links.py
+```
 
 ## Pull Request Process
 

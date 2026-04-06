@@ -67,8 +67,16 @@ jobs:
           python -m py_compile app/main.py app/weather_client.py
           for f in scripts/*.py; do python -m py_compile "$f"; done
 
+      - name: Markdown link check
+        run: python scripts/check_markdown_links.py
+
       - name: Unit tests
-        run: python -m unittest -v tests/test_provider_fallback.py tests/test_setup_auth_integration.py
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Bandit scan
+        run: |
+          pip install bandit
+          bandit -r app/ scripts/ -ll
 
       - name: Secret leak scan
         run: python scripts/security_check.py

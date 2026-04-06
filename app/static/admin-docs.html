@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" class="admin-page">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OkoNebo - Admin Documentation</title>
+    <link rel="icon" type="image/svg+xml" href="okonebo-icon.svg">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .docs-layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 16px;
+        }
+        .docs-list {
+            max-height: 72vh;
+            overflow: auto;
+            border: 1px solid rgba(125, 211, 252, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            background: rgba(255,255,255,0.03);
+        }
+        .docs-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 8px;
+            margin: 0 0 6px;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.04);
+            color: inherit;
+            cursor: pointer;
+        }
+        .docs-item.active {
+            border-color: rgba(125, 211, 252, 0.8);
+            background: rgba(125, 211, 252, 0.15);
+        }
+        .docs-path {
+            color: #9ca3af;
+            font-size: 0.85em;
+            margin-top: 4px;
+        }
+        .docs-content {
+            border: 1px solid rgba(125, 211, 252, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            background: rgba(255,255,255,0.03);
+            max-height: 72vh;
+            overflow: auto;
+        }
+        .docs-markdown {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.4;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        @media (max-width: 900px) {
+            .docs-layout {
+                grid-template-columns: 1fr;
+            }
+            .docs-list,
+            .docs-content {
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body class="admin-page">
+    <div class="app-shell" style="grid-template-columns: 1fr; max-width: 1300px; margin: 0 auto;">
+        <main class="main-col" style="padding: 16px;">
+            <div class="panel-sec" style="margin-bottom: 16px;">
+                <div class="panel-sec-hdr">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <img src="okonebo-icon.svg" alt="OkoNebo" width="28" height="28" style="border-radius: 6px;" />
+                        <h2>Admin Documentation</h2>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <a href="/admin.html" class="map-btn" style="text-decoration:none;">Back to Admin</a>
+                        <a href="/" class="map-btn" style="text-decoration:none;">Dashboard</a>
+                    </div>
+                </div>
+                <div id="docs-status" class="setup-status">Loading document index...</div>
+            </div>
+
+            <div class="docs-layout">
+                <section class="docs-list" id="docs-list"></section>
+                <section class="docs-content">
+                    <h3 id="doc-title" style="margin-top:0;">Select a document</h3>
+                    <div id="doc-path" class="docs-path"></div>
+                    <pre id="doc-content" class="docs-markdown"></pre>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const AUTH_TOKEN_STORAGE_KEY = 'weatherapp.auth.token';
+
+        function getToken() {
+            try {
+                return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
+            } catch (_) {
+                return '';
+            }
+        }
+
+        async function apiGet(path) {
+            const headers = {};
+            const token = getToken();
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(path, { headers });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const detail = body && body.detail ? String(body.detail) : `${res.status} ${res.statusText}`;
+                throw new Error(detail);
+            }
+            return body;
+        }
+
+        function setStatus(msg, tone = 'warn') {
+            const el = document.getElementById('docs-status');
+            if (!el) return;
+            el.className = `setup-status ${tone}`;
+            el.textContent = msg;
+        }
+
+        async function loadDoc(path, buttonEl) {
+            try {
+                const data = await apiGet(`/api/admin/docs/${encodeURIComponent(path).replace(/%2F/g, '/')}`);
+                const titleEl = document.getElementById('doc-title');
+                const pathEl = document.getElementById('doc-path');
+                const contentEl = document.getElementById('doc-content');
+                if (titleEl) titleEl.textContent = data.title || path;
+                if (pathEl) pathEl.textContent = data.path || path;
+                if (contentEl) contentEl.textContent = String(data.content || '');
+
+                document.querySelectorAll('.docs-item').forEach((btn) => btn.classList.remove('active'));
+                if (buttonEl) buttonEl.classList.add('active');
+                setStatus('Admin documentation loaded.', 'ok');
+            } catch (err) {
+                setStatus(`Unable to load document: ${err.message}`, 'err');
+            }
+        }
+
+        async function loadIndex() {
+            try {
+                const data = await apiGet('/api/admin/docs');
+                const list = Array.isArray(data.documents) ? data.documents : [];
+                const listEl = document.getElementById('docs-list');
+                if (!listEl) return;
+                listEl.innerHTML = '';
+
+                if (list.length === 0) {
+                    setStatus('No admin-viewable documents found.', 'warn');
+                    return;
+                }
+
+                list.forEach((doc) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'docs-item';
+                    btn.innerHTML = `<strong>${doc.title || doc.path}</strong><div class="docs-path">${doc.path}</div>`;
+                    btn.addEventListener('click', () => loadDoc(doc.path, btn));
+                    listEl.appendChild(btn);
+                });
+
+                setStatus(`Loaded ${list.length} documents.`, 'ok');
+                const firstButton = listEl.querySelector('.docs-item');
+                if (firstButton && list[0]) {
+                    await loadDoc(list[0].path, firstButton);
+                }
+            } catch (err) {
+                setStatus(`Unable to load admin docs index: ${err.message}`, 'err');
+            }
+        }
+
+        loadIndex();
+    </script>
+</body>
+</html>

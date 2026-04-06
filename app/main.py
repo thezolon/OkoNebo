@@ -1004,7 +1004,11 @@ async def api_auth_guard(request: Request, call_next):
             pass
 
     identity = _request_identity(request)
-    admin_only = (path == "/api/settings" and method == "POST") or path.startswith("/api/agent-tokens")
+    admin_only = (
+        (path == "/api/settings" and method == "POST")
+        or path.startswith("/api/agent-tokens")
+        or path.startswith("/api/admin/docs")
+    )
 
     if AUTH_REQUIRE_VIEWER_LOGIN and identity is None:
         _log_event("auth.denied", request, level="warning", path=path, reason="viewer_login_required")
@@ -3094,12 +3098,118 @@ async def owm_tile_proxy(layer: str, z: int, x: int, y: int):
 # ---------------------------------------------------------------------------
 
 _STATIC = Path(__file__).parent / "static"
+_DOCS_ROOT = Path(__file__).parent.parent / "docs"
+_DOCS_ALLOWED_ROOT_FILES = {
+    "README.md",
+    "ARCHITECTURE.md",
+    "INSTALL.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "RELEASE_PROCESS.md",
+    "RASPBERRY_PI_DEPLOYMENT.md",
+    "RELEASE_NOTES_v1.0.0.md",
+    "CODE_OF_CONDUCT.md",
+}
+
+
+def _doc_title_from_content(content: str, fallback: str) -> str:
+    for line in content.splitlines():
+        text = str(line).strip()
+        if text.startswith("#"):
+            return text.lstrip("#").strip() or fallback
+    return fallback
+
+
+def _resolve_admin_doc_path(doc_path: str) -> tuple[str, Path]:
+    raw = str(doc_path or "").strip().replace("\\", "/")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Document path is required")
+    if raw.startswith("/") or ".." in raw.split("/"):
+        raise HTTPException(status_code=400, detail="Invalid document path")
+
+    if raw.startswith("docs/"):
+        rel = raw[5:]
+        target = (_DOCS_ROOT / rel).resolve()
+        if _DOCS_ROOT.resolve() not in target.parents and target != _DOCS_ROOT.resolve():
+            raise HTTPException(status_code=400, detail="Invalid document path")
+        if not target.exists() or not target.is_file() or target.suffix.lower() != ".md":
+            raise HTTPException(status_code=404, detail="Document not found")
+        return raw, target
+
+    if raw not in _DOCS_ALLOWED_ROOT_FILES:
+        raise HTTPException(status_code=404, detail="Document not found")
+    target = (Path(__file__).parent.parent / raw).resolve()
+    if not target.exists() or not target.is_file() or target.suffix.lower() != ".md":
+        raise HTTPException(status_code=404, detail="Document not found")
+    return raw, target
+
+
+@app.get(
+    "/api/admin/docs",
+    summary="Admin documentation index",
+    description="Lists markdown documents available for admin in-app viewing.",
+    tags=["Config"],
+)
+async def api_admin_docs_index():
+    docs: list[dict[str, str]] = []
+
+    for name in sorted(_DOCS_ALLOWED_ROOT_FILES):
+        target = Path(__file__).parent.parent / name
+        if not target.exists() or not target.is_file():
+            continue
+        content = target.read_text(encoding="utf-8")
+        docs.append(
+            {
+                "path": name,
+                "title": _doc_title_from_content(content, name),
+                "scope": "root",
+            }
+        )
+
+    if _DOCS_ROOT.exists() and _DOCS_ROOT.is_dir():
+        for target in sorted(_DOCS_ROOT.rglob("*.md")):
+            rel = target.relative_to(_DOCS_ROOT).as_posix()
+            path_key = f"docs/{rel}"
+            content = target.read_text(encoding="utf-8")
+            docs.append(
+                {
+                    "path": path_key,
+                    "title": _doc_title_from_content(content, rel),
+                    "scope": "docs",
+                }
+            )
+
+    return {"documents": docs, "count": len(docs)}
+
+
+@app.get(
+    "/api/admin/docs/{doc_path:path}",
+    summary="Admin documentation content",
+    description="Returns raw markdown content for a single admin-viewable document.",
+    tags=["Config"],
+)
+async def api_admin_docs_content(doc_path: str):
+    path_key, target = _resolve_admin_doc_path(doc_path)
+    content = target.read_text(encoding="utf-8")
+    return {
+        "path": path_key,
+        "title": _doc_title_from_content(content, target.name),
+        "content": content,
+    }
 
 
 @app.get("/admin.html", include_in_schema=False)
 async def admin_html_no_cache():
     return FileResponse(
         _STATIC / "admin.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
+
+
+@app.get("/admin-docs.html", include_in_schema=False)
+async def admin_docs_html_no_cache():
+    return FileResponse(
+        _STATIC / "admin-docs.html",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
 

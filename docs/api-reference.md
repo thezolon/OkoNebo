@@ -278,6 +278,8 @@ See [authentication.md](authentication.md) for the full guide.
 | `GET` | `/api/agent-tokens` | List agent tokens (admin) |
 | `POST` | `/api/agent-tokens` | Create agent token (admin) |
 | `DELETE` | `/api/agent-tokens/{id}` | Revoke agent token (admin) |
+| `GET` | `/api/admin/docs` | List in-app admin-viewable markdown docs (admin) |
+| `GET` | `/api/admin/docs/{path}` | Read one admin-viewable markdown doc (admin) |
 
 ---
 

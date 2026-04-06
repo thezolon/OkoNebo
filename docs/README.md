@@ -2,6 +2,8 @@
 
 Feature-level documentation for OkoNebo. For installation and quick-start, see the root [README](../README.md) and [INSTALL.md](../INSTALL.md).
 
+Admins can also browse these docs in-app at `/admin-docs.html` (admin login required when auth is enabled).
+
 ---
 
 ## Feature Guides

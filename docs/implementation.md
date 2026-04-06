@@ -200,7 +200,7 @@ For fresh installs with unset location/provider keys, data endpoints may legitim
 
 `.github/workflows/ci.yml`:
 
-- `test` job: compile checks, pytest (60 tests), Bandit scan
+- `test` job: compile checks, markdown link check, unittest discovery (60 tests), Bandit scan
 - `docker` job: build, health check, smoke tests
 
 ## Key Files
