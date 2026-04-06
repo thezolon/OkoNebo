@@ -713,21 +713,21 @@ async function testProvider(providerId) {
         const keyEl = document.getElementById(`setup-provider-${providerId}-key`);
         const formKey = keyEl?.value?.trim() || null;
 
-        const params = new URLSearchParams({ provider: providerId });
-        params.set('enabled', enabledEl?.checked ? 'true' : 'false');
-        if (formKey) params.set('api_key', formKey);
+        const payload = {
+            provider: providerId,
+            enabled: !!enabledEl?.checked,
+            ...(formKey ? { api_key: formKey } : {}),
+        };
 
         // PWS requires station IDs/provider from the setup form for useful test results.
         if (providerId === 'pws') {
             const pwsProvider = document.getElementById('setup-pws-provider')?.value?.trim();
             const pwsStations = document.getElementById('setup-pws-stations')?.value?.trim();
-            if (pwsProvider) params.set('pws_provider', pwsProvider);
-            if (pwsStations) params.set('pws_stations', pwsStations);
+            if (pwsProvider) payload.pws_provider = pwsProvider;
+            if (pwsStations) payload.pws_stations = pwsStations;
         }
 
-        const url = `/test-provider?${params.toString()}`;
-
-        const data = await api(url);
+        const data = await api('/test-provider', 'POST', payload);
         if (resultEl) {
             if (data.ok) {
                 resultEl.textContent = `✓ ${data.message}`;

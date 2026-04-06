@@ -2821,8 +2821,9 @@ async def api_settings_post(payload: dict[str, Any] = Body(...)):
     return {"ok": True, "message": "Settings saved", "restart_required": False}
 
 
-@app.get(
+@app.api_route(
     "/api/test-provider",
+    methods=["GET", "POST"],
     summary="Test provider connectivity",
     description="Tests whether a provider API is working with the configured API key and location.",
     tags=["Weather"],
@@ -2837,12 +2838,25 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
         if identity.get("role") != "admin":
             raise HTTPException(status_code=403, detail="Admin role required to test providers")
 
-    provider = str(provider or "nws").strip().lower()
+    payload: dict[str, Any] = {}
+    if request and request.method.upper() == "POST":
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+
+    provider = str(payload.get("provider") or provider or "nws").strip().lower()
+    api_key = str(payload.get("api_key") or api_key or "").strip() or None
+
     if provider not in PROVIDER_IDS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
     enabled_override: str | None = None
-    if request:
+    if isinstance(payload.get("enabled"), bool):
+        enabled_override = "true" if payload.get("enabled") else "false"
+    elif request:
         enabled_override = request.query_params.get("enabled")
     is_enabled_for_test = PROVIDERS.get(provider, {}).get("enabled")
     if enabled_override is not None:
@@ -2861,8 +2875,12 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
 
     try:
         if provider == "pws":
-            pws_provider_override = str(request.query_params.get("pws_provider") or "").strip() if request else ""
-            pws_stations_override = str(request.query_params.get("pws_stations") or "").strip() if request else ""
+            pws_provider_override = str(payload.get("pws_provider") or "").strip()
+            pws_stations_override = str(payload.get("pws_stations") or "").strip()
+            if not pws_provider_override and request:
+                pws_provider_override = str(request.query_params.get("pws_provider") or "").strip()
+            if not pws_stations_override and request:
+                pws_stations_override = str(request.query_params.get("pws_stations") or "").strip()
             pws_provider_for_test = pws_provider_override or PWS_PROVIDER
             pws_stations_for_test = (
                 [s.strip() for s in pws_stations_override.split(",") if s.strip()]
