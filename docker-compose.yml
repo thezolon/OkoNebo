@@ -1,5 +1,6 @@
 services:
   okonebo:
+    image: okonebo:latest
     build: .
     container_name: okonebo
     ports:
