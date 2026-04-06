@@ -1,5 +1,7 @@
 # OkoNebo Implementation
 
+Version: 1.2.0 (April 2026)
+
 ## Runtime Model
 
 - Backend: FastAPI serving JSON API endpoints and static frontend assets
@@ -175,11 +177,11 @@ For fresh installs with unset location/provider keys, data endpoints may legitim
 
 ## Testing and CI
 
-### Test Suite (60 tests across 6 files)
+### Test Suite (63 tests across 6 files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `tests/test_provider_fallback.py` | 18 | Fallback chains, auth guards, provider error handling |
+| `tests/test_provider_fallback.py` | 21 | Fallback chains, AQI source fallback, auth guards, provider error handling |
 | `tests/test_setup_auth_integration.py` | 18 | Setup UX, auth flows, credential management |
 | `tests/test_panel_layout_ui.py` | 8 | Layout state, panel visibility, responsive behavior |
 | `tests/test_debug_observability.py` | 6 | Debug endpoint, stats, event timeline |
@@ -191,7 +193,7 @@ For fresh installs with unset location/provider keys, data endpoints may legitim
 `scripts/test_harness.sh` runs:
 
 1. Python compile checks
-2. Unit tests (60 tests)
+2. Unit tests (core suite, 59 tests)
 3. Docker build/start
 4. Health check
 5. Integration smoke (`tests/integration_smoke.py`)
@@ -201,7 +203,7 @@ For fresh installs with unset location/provider keys, data endpoints may legitim
 
 `.github/workflows/ci.yml`:
 
-- `test` job: compile checks, markdown link check, unittest discovery (60 tests), Bandit scan
+- `test` job: compile checks, markdown link check, unittest discovery (63 tests), Bandit scan
 - `docker` job: build, health check, smoke tests
 
 ## Key Files

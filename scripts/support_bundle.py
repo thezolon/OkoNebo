@@ -9,8 +9,8 @@ import json
 import os
 from pathlib import Path
 import sys
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+
+import httpx
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,18 +43,19 @@ def build_output_path(raw_output: str) -> Path:
 def main() -> int:
     args = parse_args()
     url = f"{args.base_url.rstrip('/')}/api/support-bundle"
-    request = Request(url)
-    if args.token:
-        request.add_header("Authorization", f"Bearer {args.token}")
+    headers = {"Authorization": f"Bearer {args.token}"} if args.token else None
 
     try:
-        with urlopen(request, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        print(f"Support bundle fetch failed with HTTP {exc.code}: {body}", file=sys.stderr)
-        return 1
-    except URLError as exc:
+        with httpx.Client(timeout=20, follow_redirects=True) as client:
+            response = client.get(url, headers=headers)
+        if response.status_code >= 400:
+            print(
+                f"Support bundle fetch failed with HTTP {response.status_code}: {response.text}",
+                file=sys.stderr,
+            )
+            return 1
+        payload = response.json()
+    except Exception as exc:
         print(f"Support bundle fetch failed: {exc}", file=sys.stderr)
         return 1
 

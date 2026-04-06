@@ -266,7 +266,7 @@ class WeatherCache:
         cutoff = int(time.time()) - (safe_hours * 3600)
         placeholders = ", ".join("?" for _ in clean_keys)
         query = (
-            f"SELECT key, cache_type, data, timestamp FROM history "
+            f"SELECT key, cache_type, data, timestamp FROM history "  # nosec B608
             f"WHERE key IN ({placeholders}) AND timestamp >= ? "
             f"ORDER BY timestamp ASC LIMIT ?"
         )

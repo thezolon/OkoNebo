@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.title="OkoNebo" \
 	org.opencontainers.image.url="https://github.com/thezolon/OkoNebo" \
 	org.opencontainers.image.documentation="https://github.com/thezolon/OkoNebo/blob/main/README.md" \
 	org.opencontainers.image.source="https://github.com/thezolon/OkoNebo" \
-	org.opencontainers.image.version="1.0.0"
+	org.opencontainers.image.version="1.2.0"
 WORKDIR /app
 
 # Install dependencies

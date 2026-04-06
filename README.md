@@ -21,8 +21,10 @@ This project is also a personal demonstration of AI-assisted software developmen
 - **Event timeline** - searchable/filterable event log with category filters (Observations, Alerts, Refreshes, System events)
 - **Admin observability** - real-time request/response metrics, error tracking, server connection monitoring, and operational health dashboard
 - **Radar** - RainViewer with OWM overlay option; Esri/OSM/CARTO base layers
+- **AQI fallback** - OpenWeather AQI when configured, with keyless Open-Meteo fallback
 - **PWS** - personal weather station comparison and trend chart
-- **CI pipeline** - compile checks, unit tests (35), Bandit security scan, Docker build + health + smoke on every push
+- **Runtime version visibility** - dashboard and admin pages show the running app version/build
+- **CI pipeline** - compile checks, markdown link checks, unittest discovery, Bandit, Docker build + health + smoke on every push
 
 ## Quick Start
 
@@ -109,6 +111,7 @@ Copy `.env.example` to `.env` before starting:
 | `GET /api/alerts` | Active NWS alerts for monitored locations |
 | `GET /api/metar` | Latest aviation METAR (AviationWeather, keyless) |
 | `GET /api/tides?days=1` | Tide predictions (NOAA CO-OPS, keyless) |
+| `GET /api/aqi` | Air Quality Index with OpenWeather/Open-Meteo fallback |
 | `GET /api/owm` | OpenWeather supplemental data |
 | `GET /api/pws` | Personal weather station observations |
 | `GET /api/pws/trend?hours=3` | PWS trend points |
@@ -143,7 +146,7 @@ Keyless providers are enabled by default. Keyed providers activate automatically
 bash scripts/test_harness.sh
 ```
 
-Runs: compile checks -> unit test suite (60 tests) -> Docker build -> health check -> integration smoke -> frontend smoke -> secret leak check.
+Runs: compile checks -> unit test suite -> Docker build -> health check -> integration smoke -> frontend smoke -> secret leak check.
 
 ```bash
 # Skip Docker (test against an already-running container):
@@ -157,7 +160,7 @@ WEATHERAPP_BASE_URL=http://myhost:8888 bash scripts/test_harness.sh
 
 The CI pipeline (`.github/workflows/ci.yml`) runs on every push and PR to `main` and `release/**`:
 
-- **test job**: compile checks, markdown link check, Python unit test discovery (60 tests), Bandit security scan
+- **test job**: compile checks, markdown link check, Python unit test discovery, Bandit security scan
 - **docker job**: build image, health check, integration smoke
 
 ## Operations Notes

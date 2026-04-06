@@ -7,9 +7,8 @@ import json
 import os
 from pathlib import Path
 import sys
-from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
 
+import httpx
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -92,12 +91,10 @@ def load_secrets() -> list[str]:
 
 
 def fetch_text(path: str) -> tuple[str, int]:
-    try:
-        with urlopen(f"{BASE}{path}", timeout=12) as resp:
-            return resp.read().decode("utf-8", errors="replace"), int(resp.status)
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        return body, int(exc.code)
+    url = f"{BASE}{path}"
+    with httpx.Client(timeout=12, follow_redirects=True) as client:
+        resp = client.get(url)
+    return resp.text, int(resp.status_code)
 
 
 def main() -> int:
@@ -112,9 +109,6 @@ def main() -> int:
     for endpoint in ENDPOINTS:
         try:
             body, status = fetch_text(endpoint)
-        except URLError as exc:
-            warnings.append((endpoint, f"request failed: {exc}"))
-            continue
         except Exception as exc:
             warnings.append((endpoint, f"request failed: {exc}"))
             continue
