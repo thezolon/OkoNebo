@@ -74,7 +74,7 @@ docker compose up -d --build
 Expected output (abbreviated):
 ```
 [+] Building ...
- ✔ Container weather-app  Started
+ ✔ Container okonebo  Started
 ```
 
 ---
@@ -102,7 +102,7 @@ All systems operational!
 
 If the check fails, inspect logs:
 ```
-docker compose logs weather-app
+docker compose logs okonebo
 ```
 
 ---
@@ -191,7 +191,7 @@ docker compose down && docker compose up -d
 ## Confirming a healthy install — checklist
 
 ```
-[ ] docker compose ps  shows  weather-app  running/healthy
+[ ] docker compose ps  shows  okonebo  running/healthy
 [ ] health-check script exits 0 with "All systems operational"
 [ ] http://localhost:8888 loads without console errors
 [ ] First-run overlay appeared and was dismissed after saving lat/lon
@@ -223,7 +223,7 @@ bash scripts/reset.sh --config     # wipe everything
 If auth is enabled and admin credentials are lost, reset them directly in the running container:
 
 ```bash
-docker exec weather-app python /app/scripts/reset_admin.py \
+docker exec okonebo python /app/scripts/reset_admin.py \
 	--username admin \
 	--password 'change-me-now-strong'
 ```

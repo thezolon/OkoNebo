@@ -1,7 +1,7 @@
 services:
-  weather-app:
+  okonebo:
     build: .
-    container_name: weather-app
+    container_name: okonebo
     ports:
       - "8888:8000"
     restart: unless-stopped

@@ -45,7 +45,7 @@ echo "[harness] unit tests"
 
 if [[ "${SKIP_DOCKER}" != "1" ]]; then
   echo "[harness] docker build/start"
-  docker compose up -d --build weather-app
+  docker compose up -d --build --remove-orphans okonebo
 fi
 
 echo "[harness] health check (with warm-up retries)"

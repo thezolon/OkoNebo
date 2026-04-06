@@ -15,7 +15,7 @@ if not exist secure_settings.db type nul > secure_settings.db
 if not exist cache.db type nul > cache.db
 
 echo Starting OkoNebo...
-docker compose up -d --build
+docker compose up -d --build --remove-orphans
 if errorlevel 1 (
     echo ERROR: docker compose failed. Is Docker Desktop running?
     pause
@@ -38,7 +38,7 @@ if not errorlevel 1 (
 )
 if %ATTEMPTS% GEQ 5 (
     echo Container did not become healthy in time. Check logs:
-    echo   docker compose logs weather-app
+    echo   docker compose logs okonebo
     pause
     exit /b 1
 )

@@ -2,7 +2,7 @@
 """Reset or create admin/viewer credentials in secure_settings.db.
 
 Designed for Docker recovery flows, for example:
-  docker exec weather-app python /app/scripts/reset_admin.py --username admin --password 'new-strong-pass'
+    docker exec okonebo python /app/scripts/reset_admin.py --username admin --password 'new-strong-pass'
 """
 
 from __future__ import annotations

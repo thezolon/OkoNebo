@@ -240,7 +240,7 @@ docker compose up -d --build
 If auth is enabled and admin credentials are lost, reset them without wiping app state:
 
 ```bash
-docker exec weather-app python /app/scripts/reset_admin.py \
+docker exec okonebo python /app/scripts/reset_admin.py \
 	--username admin \
 	--password 'change-me-now-strong'
 ```

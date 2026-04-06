@@ -253,7 +253,7 @@ Expected output:
 ### View Real-Time Logs
 
 ```bash
-docker compose logs -f weather-app
+docker compose logs -f okonebo
 ```
 
 ### Check Cache Size (should be <5MB)
@@ -306,9 +306,9 @@ JSON.parse(localStorage.getItem('weatherapp.persistentState'));
 
 | Task | Frequency | Command |
 |------|-----------|---------|
-| View logs | Daily | `docker compose logs weather-app | tail -20` |
+| View logs | Daily | `docker compose logs okonebo | tail -20` |
 | Check cache size | Weekly | `du -sh ~/.local...` |
-| Restart if stuck | As needed | `docker compose restart weather-app` |
+| Restart if stuck | As needed | `docker compose restart okonebo` |
 | Full restart | Monthly | `docker compose down && docker compose up -d --build` |
 | Update app | Per release | `git pull && bash deploy-on-pi.sh` |
 

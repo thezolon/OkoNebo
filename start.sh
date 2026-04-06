@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 touch secure_settings.db cache.db
 
 echo "Starting OkoNebo..."
-docker compose up -d --build
+docker compose up -d --build --remove-orphans
 
 echo ""
 echo "  Dashboard : http://localhost:8888"
@@ -27,5 +27,5 @@ for attempt in 1 2 3 4 5; do
 done
 
 echo "Container did not become healthy in time. Check logs:"
-echo "  docker compose logs weather-app"
+echo "  docker compose logs okonebo"
 exit 1

@@ -79,6 +79,6 @@ if ($allOk) {
     Write-Host "  OpenAPI   : $base/openapi.json"
     exit 0
 } else {
-    Write-Host "One or more checks failed. Run: docker compose logs weather-app" -ForegroundColor Red
+    Write-Host "One or more checks failed. Run: docker compose logs okonebo" -ForegroundColor Red
     exit 1
 }
