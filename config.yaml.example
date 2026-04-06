@@ -23,7 +23,7 @@ timezone: America/Chicago
 # ---------------------------------------------------------------------------
 # App identity
 # ---------------------------------------------------------------------------
-user_agent: "WeatherApp/1.0 (self-hosted; contact@example.com)"
+user_agent: "OkoNebo/1.1.0 (self-hosted; contact@example.com)"
 
 # ---------------------------------------------------------------------------
 # Map display
