@@ -11,6 +11,7 @@ const PROVIDER_IDS = [
 ];
 
 const AUTH_TOKEN_STORAGE_KEY = 'weatherapp.auth.token';
+let AUTH_TOKEN_MEMORY = '';
 let AUTH_MODE = { enabled: false, require_viewer_login: false };
 let PROVIDER_TTL_DEFAULTS = {};
 let PROVIDER_TTL_BOUNDS = { min_seconds: 60, max_seconds: 86400 };
@@ -131,15 +132,22 @@ function collectProviderPullCycles() {
 }
 
 function getToken() {
-    try { return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ''; } catch (_) { return ''; }
+    if (AUTH_TOKEN_MEMORY) return AUTH_TOKEN_MEMORY;
+    try {
+        AUTH_TOKEN_MEMORY = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
+        return AUTH_TOKEN_MEMORY;
+    } catch (_) {
+        return AUTH_TOKEN_MEMORY;
+    }
 }
 
 function setToken(token) {
+    AUTH_TOKEN_MEMORY = token || '';
     try {
-        if (token) window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+        if (AUTH_TOKEN_MEMORY) window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, AUTH_TOKEN_MEMORY);
         else window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     } catch (_) {
-        // ignore
+        // Keep in-memory token for this tab when storage is unavailable.
     }
 }
 
