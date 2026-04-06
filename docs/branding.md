@@ -10,7 +10,7 @@
 - Full logo: `app/static/okonebo-logo.svg`
 - Icon/favicons/header mark: `app/static/okonebo-icon.svg`
 
-Both runtime asset paths are intentionally kept in sync with `OKONEBO.svg` so existing HTML references continue to work without further code changes.
+Both runtime asset paths are kept in sync with `OKONEBO.svg` so existing HTML references continue to work without further code changes.
 
 ## Usage
 
@@ -22,7 +22,7 @@ Both runtime asset paths are intentionally kept in sync with `OKONEBO.svg` so ex
 
 ### Docker Metadata
 
-Docker image OCI labels in `Dockerfile` remain the source for project branding metadata (`title`, `description`, `url`, `documentation`, `source`, `version`).
+Docker image OCI labels in `Dockerfile` are the canonical source for project branding metadata: `title`, `description`, `url`, `documentation`, `source`, and `version`.
 
 ## License
 

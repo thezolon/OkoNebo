@@ -133,4 +133,4 @@ When bumping the version for a new release, update these locations:
 | `RELEASE_NOTES_vX.Y.Z.md` | Filename + heading |
 | `README.md` | CI badge URL (if major) |
 | `config.yaml.example` | `user_agent` string |
-| `IMPLEMENTATION.md` | Version heading |
+| `docs/implementation.md` | Version heading |

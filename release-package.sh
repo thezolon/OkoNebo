@@ -30,9 +30,8 @@ copy_path "deploy-on-pi.sh"
 copy_path "start.sh"
 copy_path "scripts"
 copy_path "README.md"
-copy_path "IMPLEMENTATION.md"
+copy_path "docs/implementation.md"
 copy_path "RASPBERRY_PI_DEPLOYMENT.md"
-copy_path "ROBUSTNESS_PLAN.md"
 
 cat > "$STAGE_DIR/RELEASE_MANIFEST.txt" <<'EOF'
 Weather App Raspberry Pi Release Package
@@ -50,9 +49,8 @@ Contents:
 - start.sh
 - scripts/
 - README.md
-- IMPLEMENTATION.md
+- docs/implementation.md
 - RASPBERRY_PI_DEPLOYMENT.md
-- ROBUSTNESS_PLAN.md
 
 Quick start on target:
 1. tar -xzf weatherapp-pi-release-*.tar.gz

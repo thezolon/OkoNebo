@@ -25,7 +25,8 @@ Feature-level documentation for OkoNebo. For installation and quick-start, see t
 |------|---------|
 | [INSTALL.md](../INSTALL.md) | Step-by-step fresh install on Linux, macOS, Windows |
 | [ARCHITECTURE.md](../ARCHITECTURE.md) | System design, provider matrix, request flow |
-| [IMPLEMENTATION.md](../IMPLEMENTATION.md) | Technical implementation notes |
+| [implementation.md](implementation.md) | Technical implementation notes |
+| [branding.md](branding.md) | Logo assets, runtime paths, Docker OCI labels |
 | [SECURITY.md](../SECURITY.md) | Security policy, design notes, reporting vulnerabilities |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Development setup and pull request process |
 | [RASPBERRY_PI_DEPLOYMENT.md](../RASPBERRY_PI_DEPLOYMENT.md) | Pi + battery + cell modem deployment guide |

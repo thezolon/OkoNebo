@@ -180,7 +180,7 @@ The CI pipeline (`.github/workflows/ci.yml`) runs on every push and PR to `main`
 | [app/static/css/style.css](app/static/css/style.css) | Styling |
 | [config.yaml.example](config.yaml.example) | Annotated configuration template |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, provider matrix, auth notes |
-| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Technical implementation notes |
+| [docs/implementation.md](docs/implementation.md) | Technical implementation notes |
 | [SECURITY.md](SECURITY.md) | Security policy and reporting |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
 | [RASPBERRY_PI_DEPLOYMENT.md](RASPBERRY_PI_DEPLOYMENT.md) | Pi deployment notes |

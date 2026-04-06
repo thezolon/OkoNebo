@@ -75,7 +75,7 @@ All PRs are gated on CI (`.github/workflows/ci.yml`). Failing checks block merge
 ## Pull Request Process
 
 1. Fork and create a branch: `git checkout -b feature/my-thing`.
-2. Commit with clear messages referencing task IDs from [V1_0_EXECUTION_BOARD.md](V1_0_EXECUTION_BOARD.md) when applicable (`T5.4: Add Meteomatics adapter`).
+2. Commit with clear messages referencing the related [GitHub Issue](https://github.com/thezolon/OkoNebo/issues) when applicable (`fixes #42`).
 3. Open a PR against `main`.
 4. CI must pass.
 5. At least one review approval from a maintainer is required to merge.
@@ -90,4 +90,4 @@ Open an issue and include:
 - What you want to achieve
 - Whether you want to implement it yourself
 
-Features that align with the [v1.0 Execution Board](V1_0_EXECUTION_BOARD.md) will be prioritised.
+Features tracked in [GitHub Issues](https://github.com/thezolon/OkoNebo/issues) will be prioritised.
