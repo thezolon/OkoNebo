@@ -151,11 +151,20 @@ AGENT_PROFILE_VERSION = "1.0"
 _VALID_TIMEZONES = available_timezones()
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
 _LABEL_RE = re.compile(r"^[\w\s\-.,()&'/:]{1,100}$")
+APP_VERSION = str(os.getenv("OKONEBO_VERSION") or os.getenv("APP_VERSION") or "1.2.0").strip() or "1.2.0"
+APP_BUILD = str(os.getenv("OKONEBO_BUILD") or os.getenv("APP_BUILD") or "").strip()
 _LOG_LEVEL = str(os.getenv("LOG_LEVEL") or "INFO").upper()
 logging.basicConfig(level=getattr(logging, _LOG_LEVEL, logging.INFO), format="%(message)s")
 LOGGER = logging.getLogger("okonebo")
 install_logging_redaction()
 _REQUEST_ID_CTX: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="n/a")
+
+
+def _runtime_version_payload() -> dict[str, Any]:
+    payload: dict[str, Any] = {"version": APP_VERSION}
+    if APP_BUILD:
+        payload["build"] = APP_BUILD
+    return payload
 
 
 def _safe_float(value: Any, default: float) -> float:
@@ -1793,6 +1802,7 @@ async def api_agent_tokens_delete(token_id: str, request: Request):
 async def api_bootstrap():
     return {
         "first_run_required": not FIRST_RUN_COMPLETE,
+        "runtime_version": _runtime_version_payload(),
         "auth": {
             "enabled": AUTH_ENABLED,
             "require_viewer_login": AUTH_REQUIRE_VIEWER_LOGIN,
@@ -1828,6 +1838,7 @@ async def api_config():
         "lon": LON,
         "label": LABEL,
         "timezone": TIMEZONE,
+        "runtime_version": _runtime_version_payload(),
         "alert_locations": ALERT_LOCATIONS,
         "owm_available": bool(PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY),
         "pws_available": bool(PROVIDERS.get("pws", {}).get("enabled") and PWS_KEY and PWS_STATIONS),
@@ -2639,6 +2650,7 @@ async def api_settings_get():
         }
 
     return {
+        "runtime_version": _runtime_version_payload(),
         "location": {
             "home": home,
             "work": work,

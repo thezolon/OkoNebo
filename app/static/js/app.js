@@ -133,7 +133,17 @@ const runtime = {
     lastCurrentSourceKey: '',
     lastCurrentSourceLabel: '',
     pushConfig: null,
+    appVersion: '--',
+    appBuild: '',
 };
+
+function renderRuntimeVersion() {
+    const el = document.getElementById('app-version');
+    if (!el) return;
+    const base = runtime.appVersion || '--';
+    const suffix = runtime.appBuild ? ` (${runtime.appBuild})` : '';
+    el.textContent = `Version ${base}${suffix}`;
+}
 
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -3664,12 +3674,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     try {
         const bootstrap = await fetchAPIDeduped('/bootstrap');
         runtime.firstRunRequired = !!bootstrap?.first_run_required;
+        runtime.appVersion = String(bootstrap?.runtime_version?.version || runtime.appVersion || '--');
+        runtime.appBuild = String(bootstrap?.runtime_version?.build || runtime.appBuild || '');
+        renderRuntimeVersion();
         if (runtime.firstRunRequired) {
             showFirstRunOverlay();
         }
     } catch (err) {
         // If bootstrap fails we continue with existing behavior.
     }
+
+    renderRuntimeVersion();
 
     renderDebugPanel();
     startAgeRefreshLoop();

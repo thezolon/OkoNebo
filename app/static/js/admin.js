@@ -158,6 +158,14 @@ function setStatus(id, message, tone = 'warn') {
     el.className = `setup-status ${tone}`;
 }
 
+function setRuntimeVersion(settings) {
+    const el = document.getElementById('admin-runtime-version');
+    if (!el) return;
+    const version = String(settings?.runtime_version?.version || '--');
+    const build = String(settings?.runtime_version?.build || '');
+    el.textContent = build ? `Runtime version: ${version} (${build})` : `Runtime version: ${version}`;
+}
+
 function prettyPressureLevel(level) {
     const raw = String(level || 'unknown').toLowerCase();
     if (raw === 'normal') return 'Normal';
@@ -441,6 +449,7 @@ function fillSettings(settings) {
 async function loadSettings() {
     try {
         const settings = await api('/settings');
+        setRuntimeVersion(settings);
         fillSettings(settings);
         setStatus('setup-status', 'Settings loaded.', 'ok');
     } catch (err) {
