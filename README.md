@@ -117,6 +117,7 @@ Copy `.env.example` to `.env` before starting:
 | `POST /api/auth/login` | Obtain JWT (rate-limited: 10 attempts / 5 min / IP) |
 | `POST /api/auth/logout` | Revoke current token |
 | `GET /api/debug` | Server/runtime diagnostics |
+| `GET /api/support-bundle` | Safe-to-share redacted diagnostics bundle |
 | `GET /api/bootstrap` | First-run completion state |
 
 ## Providers
@@ -199,6 +200,20 @@ Weather data endpoints (`/api/current`, `/api/forecast`, `/api/hourly`, `/api/al
 ```bash
 curl http://localhost:8888/api/debug
 ```
+
+### Safe support bundle
+
+```bash
+python scripts/support_bundle.py
+```
+
+For auth-enabled installs:
+
+```bash
+OKONEBO_BEARER_TOKEN=<token> python scripts/support_bundle.py --base-url http://localhost:8888
+```
+
+Expected result: a timestamped `support_bundle_*.json` file you can share for troubleshooting without exposing configured keys or passwords.
 
 ### Provider statistics
 

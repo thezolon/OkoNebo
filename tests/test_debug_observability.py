@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import patch
 
@@ -110,6 +111,37 @@ class DebugObservabilityTests(unittest.TestCase):
         self.assertNotIn("hunter2", redacted)
         self.assertNotIn("token-123", redacted)
         self.assertIn("[REDACTED]", redacted)
+
+    def test_support_bundle_is_safe_to_share(self):
+        secret_url = "https://api.example.test/data?api_key=super-secret-key&appid=owm-secret"
+        post_resp = self.client.post(
+            "/api/debug/client",
+            json={
+                "request_url": secret_url,
+                "headers": {"Authorization": "Bearer super-token"},
+                "password": "letmein",
+                "icon_health": {
+                    "last_failed_url": secret_url,
+                    "fallback_count": 2,
+                },
+            },
+        )
+        self.assertEqual(post_resp.status_code, 200)
+
+        resp = self.client.get("/api/support-bundle")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+
+        self.assertEqual(body.get("bundle_version"), 1)
+        self.assertIn("support bundle", " ".join(body.get("notes", [])).lower())
+        self.assertNotIn("super-secret-key", str(body))
+        self.assertNotIn("super-token", str(body))
+        self.assertNotIn("letmein", str(body))
+        self.assertNotIn('"lat"', json.dumps(body))
+        self.assertNotIn('"lon"', json.dumps(body))
+        self.assertEqual(body.get("location", {}).get("label"), main.LABEL)
+        self.assertIn("providers", body)
+        self.assertIn("observability", body)
 
 
 if __name__ == "__main__":

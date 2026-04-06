@@ -143,6 +143,7 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
     "/api/ha/weather": "weather.read",
     "/api/stats": "stats.read",
     "/api/debug": "debug.read",
+    "/api/support-bundle": "debug.read",
     "/api/capabilities": "config.read",
 }
 
@@ -1569,6 +1570,7 @@ async def api_capabilities():
             {"name": "get_ha_weather", "endpoint": "/api/ha/weather", "scope": "weather.read"},
             {"name": "get_stats", "endpoint": "/api/stats", "scope": "stats.read"},
             {"name": "get_debug", "endpoint": "/api/debug", "scope": "debug.read"},
+            {"name": "get_support_bundle", "endpoint": "/api/support-bundle", "scope": "debug.read"},
         ],
     }
 
@@ -1617,6 +1619,7 @@ async def api_agent_profile(request: Request):
             {"name": "get_bootstrap", "method": "GET", "path": "/api/bootstrap", "scope": "config.read"},
             {"name": "get_stats", "method": "GET", "path": "/api/stats", "scope": "stats.read"},
             {"name": "get_debug", "method": "GET", "path": "/api/debug", "scope": "debug.read"},
+            {"name": "get_support_bundle", "method": "GET", "path": "/api/support-bundle", "scope": "debug.read"},
         ],
         "agent_behavior": {
             "rules": [
@@ -1661,6 +1664,7 @@ async def api_agent_instructions_txt():
         "- get_stats -> GET /api/stats",
         "- get_config -> GET /api/config",
         "- get_bootstrap -> GET /api/bootstrap",
+        "- get_support_bundle -> GET /api/support-bundle",
         "",
         "Runtime Rules:",
         "- Treat HTTP 401/403 as auth/scope errors and stop retry loops.",
@@ -2507,6 +2511,110 @@ async def api_debug():
         "client": client_snapshot,
         "client_updated_at": DEBUG_STATE["last_client_update"],
     }
+
+
+def _support_bundle_payload() -> dict[str, Any]:
+    active_rate_limit_clients = 0
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW_SEC
+    for _, bucket in list(_RATE_LIMIT_BUCKETS.items()):
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if bucket:
+            active_rate_limit_clients += 1
+
+    upstream_stats = wc.get_upstream_call_stats()
+    observability = _observability_health(upstream_stats, active_rate_limit_clients)
+    _record_observability_state(observability)
+    observability["recommendations"] = _observability_recommendations(observability)
+
+    client_snapshot = DEBUG_STATE["last_client_snapshot"]
+    client_icon_health = (
+        client_snapshot.get("icon_health", {})
+        if isinstance(client_snapshot, dict)
+        and isinstance(client_snapshot.get("icon_health", {}), dict)
+        else {}
+    )
+
+    provider_summary = {
+        provider_id: {
+            "enabled": bool(PROVIDERS.get(provider_id, {}).get("enabled")),
+            "pull_cycle_seconds": int(PROVIDER_PULL_CYCLES.get(provider_id) or wc.get_provider_pull_cycle_defaults().get(provider_id) or 0),
+            "key_configured": bool(_provider_api_key(provider_id)) if provider_id in PROVIDER_KEY_ENV else False,
+        }
+        for provider_id in PROVIDER_IDS
+    }
+
+    safe_client = redact_value(client_snapshot) if isinstance(client_snapshot, dict) else None
+    safe_client_icon = redact_value(client_icon_health) if isinstance(client_icon_health, dict) else {}
+
+    return {
+        "bundle_version": 1,
+        "generated_at": int(time.time()),
+        "service": {
+            "name": "okonebo",
+            "version": app.version,
+            "server_started_at": SERVER_STARTED_AT,
+            "uptime_seconds": int(time.time()) - SERVER_STARTED_AT,
+        },
+        "system": {
+            "python_version": os.sys.version.split()[0],
+            "auth_enabled": AUTH_ENABLED,
+            "viewer_login_required": AUTH_REQUIRE_VIEWER_LOGIN,
+            "first_run_complete": FIRST_RUN_COMPLETE,
+            "map_provider": MAP_PROVIDER,
+            "timezone": TIMEZONE,
+        },
+        "location": {
+            "label": LABEL,
+            "timezone": TIMEZONE,
+            "alert_location_count": len(ALERT_LOCATIONS),
+            "has_work_location": len(ALERT_LOCATIONS) > 1,
+        },
+        "integrations": {
+            "owm_available": bool(PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY),
+            "pws_available": bool(PROVIDERS.get("pws", {}).get("enabled") and PWS_KEY and PWS_STATIONS),
+            "pws_provider": PWS_PROVIDER,
+            "pws_station_count": len(PWS_STATIONS),
+            "push_subscription_count": len(_load_push_subscriptions()),
+            "webhook_count": len(_load_webhooks()),
+        },
+        "providers": provider_summary,
+        "observability": observability,
+        "upstream_calls": upstream_stats,
+        "rate_limit": {
+            "window_seconds": RATE_LIMIT_WINDOW_SEC,
+            "max_requests_per_window": RATE_LIMIT_MAX_PER_WINDOW,
+            "active_clients": active_rate_limit_clients,
+            "blocked_total": _RATE_LIMIT_BLOCKED_TOTAL,
+        },
+        "provider_outcomes": dict(_PROVIDER_OUTCOMES),
+        "client": safe_client,
+        "client_updated_at": DEBUG_STATE["last_client_update"],
+        "client_icon_diagnostics": {
+            "fallback_count": int(safe_client_icon.get("fallback_count") or 0),
+            "last_failed_url": safe_client_icon.get("last_failed_url"),
+            "last_failed_at": safe_client_icon.get("last_failed_at"),
+            "current_source_key": safe_client_icon.get("current_source_key"),
+            "current_source_label": safe_client_icon.get("current_source_label"),
+            "has_recent_failures": bool(safe_client_icon.get("fallback_count")),
+        },
+        "notes": [
+            "Support bundle is intentionally redacted for safe sharing.",
+            "Secrets, tokens, passwords, and provider keys are scrubbed from logs, errors, and client snapshots.",
+            "Exact coordinates and credential values are omitted from this bundle.",
+        ],
+    }
+
+
+@app.get(
+    "/api/support-bundle",
+    summary="Safe support bundle",
+    description="Returns a pre-redacted diagnostic bundle intended for safe sharing when requesting help.",
+    tags=["Debug"],
+)
+async def api_support_bundle():
+    return _support_bundle_payload()
 
 
 @app.get(

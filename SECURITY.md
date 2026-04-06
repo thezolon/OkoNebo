@@ -39,6 +39,7 @@ Items out of scope:
 - **API keys** are stored encrypted using Fernet symmetric encryption in `secure_settings.db`.  The encryption key is derived from the `SETTINGS_ENCRYPTION_KEY` env var (or `auth.token_secret` as fallback).  Keep this value secret.
 - **Auth tokens** are HMAC-SHA256 signed with `AUTH_TOKEN_SECRET`.  Use a long random value in production.  Tokens are revocable via `POST /api/auth/logout`.
 - **CORS** is currently set to `allow_origins=["*"]`.  Tighten this in production if the app is exposed on the public internet.
+- **Support diagnostics** should be collected with `python scripts/support_bundle.py` or `GET /api/support-bundle` rather than raw logs when asking for help.
 - Run `bash scripts/test_harness.sh` (or at minimum `python scripts/security_check.py`) before every release to scan for leaked secrets.
 
 ## Security Checks
