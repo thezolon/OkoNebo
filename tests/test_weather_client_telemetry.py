@@ -117,6 +117,30 @@ class WeatherClientTelemetryTests(unittest.IsolatedAsyncioTestCase):
         sleep_mock.assert_awaited_once()
         self.assertAlmostEqual(sleep_mock.await_args.args[0], 0.65, places=6)
 
+    async def test_get_owm_aqi_uses_v25_air_pollution_endpoint(self):
+        lat = 35.5 + (time.time_ns() % 1000) / 1_000_000
+        lon = -96.6 - (time.time_ns() % 1000) / 1_000_000
+        with patch("app.weather_client._owm_get", new=AsyncMock(return_value={"list": []})) as mock_owm_get:
+            payload = await wc.get_owm_aqi(lat, lon, "test-key")
+
+        self.assertFalse(payload.get("available"))
+        mock_owm_get.assert_awaited_once()
+        self.assertEqual(mock_owm_get.await_args.args[0], f"{wc.OWM_AQI_BASE}/air_pollution")
+
+    async def test_test_provider_maps_openweather_401_to_clear_config_error(self):
+        request = httpx.Request("GET", "https://api.openweathermap.org/data/3.0/onecall")
+        response = httpx.Response(401, request=request)
+
+        with patch(
+            "app.weather_client.get_owm_onecall",
+            new=AsyncMock(side_effect=httpx.HTTPStatusError("401 Unauthorized", request=request, response=response)),
+        ):
+            payload = await wc.test_provider("openweather", 35.5, -96.6, api_key="bad-key")
+
+        self.assertFalse(payload.get("ok"))
+        self.assertEqual(payload.get("status_code"), 400)
+        self.assertIn("401 Unauthorized", payload.get("error", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

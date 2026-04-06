@@ -2898,7 +2898,10 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
         if result.get("ok"):
             return {"ok": True, "provider": provider, "message": result.get("message"), "data": result.get("data")}
         else:
-            raise HTTPException(status_code=502, detail=result.get("error", "Provider test failed"))
+            raise HTTPException(
+                status_code=int(result.get("status_code") or 502),
+                detail=result.get("error", "Provider test failed"),
+            )
     except HTTPException:
         raise
     except Exception as exc:

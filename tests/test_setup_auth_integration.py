@@ -457,6 +457,36 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         finally:
             main.wc.get_pws_observations = original
 
+    def test_test_provider_uses_client_error_status_for_openweather(self):
+        main.AUTH_ENABLED = False
+        main.PROVIDERS["openweather"] = {"enabled": True}
+
+        original = main.wc.test_provider
+
+        async def fake_test_provider(**kwargs):
+            self.assertEqual(kwargs.get("provider_id"), "openweather")
+            return {
+                "ok": False,
+                "provider": "openweather",
+                "error": "OpenWeather rejected the API key (401 Unauthorized). Verify the key and that it has One Call access enabled.",
+                "status_code": 400,
+            }
+
+        main.wc.test_provider = fake_test_provider
+        try:
+            resp = self.client.get(
+                "/api/test-provider",
+                params={
+                    "provider": "openweather",
+                    "enabled": "true",
+                    "api_key": "bad-key",
+                },
+            )
+            self.assertEqual(resp.status_code, 400, resp.text)
+            self.assertIn("401 Unauthorized", resp.text)
+        finally:
+            main.wc.test_provider = original
+
 
 if __name__ == "__main__":
     unittest.main()

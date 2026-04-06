@@ -638,6 +638,7 @@ async def get_alerts_multi(locations: list[dict], user_agent: str) -> list[dict]
 # ---------------------------------------------------------------------------
 
 OWM_BASE = "https://api.openweathermap.org/data/3.0"
+OWM_AQI_BASE = "https://api.openweathermap.org/data/2.5"
 PWS_BASE = "https://api.weather.com/v2/pws/observations/current"
 PWS_HISTORY_BASE = "https://api.weather.com/v2/pws/observations/all/1day"
 WEATHERAPI_BASE = "https://api.weatherapi.com/v1"
@@ -1620,7 +1621,7 @@ async def get_owm_aqi(lat: float, lon: float, api_key: str) -> dict:
 
     async def _producer() -> dict:
         data = await _owm_get(
-            f"{OWM_BASE}/air_pollution",
+            f"{OWM_AQI_BASE}/air_pollution",
             {
                 "lat": lat,
                 "lon": lon,
@@ -2024,6 +2025,29 @@ async def test_provider(
         else:
             return {"ok": False, "provider": provider_id, "error": f"Unknown provider: {provider_id}"}
 
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response is not None else 502
+        provider_name = {
+            "openweather": "OpenWeather",
+            "weatherapi": "WeatherAPI",
+            "visualcrossing": "Visual Crossing",
+            "aviationweather": "AviationWeather",
+            "noaa_tides": "NOAA Tides",
+        }.get(provider_id, provider_id)
+        if provider_id == "openweather" and status_code == 401:
+            message = "OpenWeather rejected the API key (401 Unauthorized). Verify the key and that it has One Call access enabled."
+        elif provider_id == "openweather" and status_code == 404:
+            message = "OpenWeather endpoint not available for this request. Verify the configured API plan and endpoint support."
+        elif status_code in {400, 401, 403, 404}:
+            message = f"{provider_name} request failed with HTTP {status_code}. Verify provider credentials and configuration."
+        else:
+            message = f"{provider_name} upstream error (HTTP {status_code})."
+        return {
+            "ok": False,
+            "provider": provider_id,
+            "error": message,
+            "status_code": 400 if status_code in {400, 401, 403, 404} else 502,
+        }
     except Exception as exc:
         return {
             "ok": False,
