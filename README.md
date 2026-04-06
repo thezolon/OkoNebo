@@ -269,6 +269,21 @@ Success signals: UI `OWM` source badge is green; `/api/owm` contains populated `
 
 Not-ready signals: `/api/owm` returns `{"available": false, "error": "..."}` or `401 Unauthorized` - confirm One Call 3.0 is enabled on the OWM account, then rebuild/restart.
 
+## Documentation
+
+Feature guides live in the [docs/](docs/) folder:
+
+| Guide | Topic |
+|-------|-------|
+| [docs/api-reference.md](docs/api-reference.md) | Complete endpoint reference |
+| [docs/authentication.md](docs/authentication.md) | JWT login, roles, rate limiting, session tokens |
+| [docs/agents.md](docs/agents.md) | AI agent tokens, scopes, discovery, MCP/REST integration |
+| [docs/webhooks.md](docs/webhooks.md) | Outgoing webhooks on threat-level transitions |
+| [docs/push-notifications.md](docs/push-notifications.md) | Browser push notifications for severe weather alerts |
+| [docs/home-assistant.md](docs/home-assistant.md) | Home Assistant sensor and weather entity integration |
+| [docs/multi-location.md](docs/multi-location.md) | Monitoring multiple locations simultaneously |
+| [docs/support-troubleshooting.md](docs/support-troubleshooting.md) | Debug, support bundle, health checks, common errors |
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
