@@ -50,7 +50,7 @@ Items out of scope:
 |-------|------|------|
 | Secret leak scan | `scripts/security_check.py` | Fails CI if any configured key value appears in source or config files |
 | Python syntax / compile check | `py_compile` | Catches import-time errors before deployment |
-| Unit tests including auth guard and write-protection behaviour | `unittest` | 35 tests covering provider fallback, auth middleware, settings validation, and token lifecycle |
+| Unit tests including auth guard and write-protection behaviour | `unittest` | 60 tests covering provider fallback, auth middleware, settings validation, token lifecycle, observability, telemetry, and cache behavior |
 | Docker build | `docker build` | Ensures the image builds cleanly from a cold checkout |
 | Container health + integration smoke | `curl` + `tests/integration_smoke.py` | Verifies all API endpoints respond correctly after a real container start |
 
