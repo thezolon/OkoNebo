@@ -2169,18 +2169,14 @@ async function renderAqi(forceFetch = false) {
     const aqi = cache.aqi || {};
     const section = document.getElementById('aqi-section');
 
-    if (!cache.config?.owm_available) {
-        section.style.display = 'none';
-        return;
-    }
-
     section.style.display = '';
 
     if (!aqi.available) {
         document.getElementById('aqi-badge').textContent = '--';
         document.getElementById('aqi-badge').style.backgroundColor = '#4b5563';
         document.getElementById('aqi-index').textContent = '--';
-        document.getElementById('aqi-category').textContent = 'Unavailable';
+        const src = aqi.source ? ` (${String(aqi.source)})` : '';
+        document.getElementById('aqi-category').textContent = `Unavailable${src}`;
         document.getElementById('aqi-pm25').textContent = '--';
         document.getElementById('aqi-pm10').textContent = '--';
         document.getElementById('aqi-no2').textContent = '--';
@@ -2195,7 +2191,8 @@ async function renderAqi(forceFetch = false) {
     document.getElementById('aqi-badge').textContent = aqiIndex;
     document.getElementById('aqi-badge').style.backgroundColor = aqiColors[aqiIndex] || '#ccc';
     document.getElementById('aqi-index').textContent = aqiIndex;
-    document.getElementById('aqi-category').textContent = aqiLabels[aqiIndex] || '--';
+    const sourceLabel = aqi.source ? ` (${String(aqi.source)})` : '';
+    document.getElementById('aqi-category').textContent = `${aqiLabels[aqiIndex] || '--'}${sourceLabel}`;
 
     const components = aqi.components || {};
     document.getElementById('aqi-pm25').textContent = components.pm2_5 != null ? `${Math.round(components.pm2_5)} µg/m³` : '--';
