@@ -163,9 +163,9 @@ Returns `sunrise`, `sunset`, `solar_noon`, `golden_hour_start`, `golden_hour_end
 
 ### `GET /api/aqi`
 
-Air Quality Index from OpenWeatherMap. Requires OWM key. Cached 30 min.
+Air Quality Index with provider fallback: OpenWeather AQI when configured, otherwise keyless Open-Meteo AQI. Cached 30 min.
 
-Returns `{ "available": bool, "aqi": 1-5, "components": {...}, "timestamp": ... }`.
+Returns `{ "available": bool, "aqi": 1-5, "components": {...}, "timestamp": ..., "source": "openweather|openmeteo" }`.
 
 AQI scale: 1 = Good, 2 = Fair, 3 = Moderate, 4 = Poor, 5 = Very Poor.
 

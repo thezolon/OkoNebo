@@ -2137,45 +2137,59 @@ async def api_astro():
     return payload
 
 
+async def _resolve_aqi_payload() -> dict[str, Any]:
+    """Resolve AQI with OpenWeather primary (when configured) and keyless Open-Meteo fallback."""
+    errors: dict[str, str] = {}
+
+    if PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY:
+        try:
+            payload = await wc.get_owm_aqi(LAT, LON, OWM_KEY)
+            payload["available"] = True
+            payload["source"] = payload.get("source") or "openweather"
+            return payload
+        except Exception as exc:
+            errors["openweather"] = redact_text(str(exc))
+
+    try:
+        payload = await wc.get_openmeteo_aqi(LAT, LON)
+        payload["available"] = bool(payload.get("available"))
+        payload["source"] = payload.get("source") or "openmeteo"
+        if errors:
+            payload["fallback_errors"] = errors
+        return payload
+    except Exception as exc:
+        errors["openmeteo"] = redact_text(str(exc))
+
+    message = "AQI providers unavailable"
+    if "openweather" in errors and "openmeteo" in errors:
+        message = "AQI providers unavailable (openweather and openmeteo)"
+
+    return {
+        "available": False,
+        "error": message,
+        "aqi": None,
+        "components": {},
+        "timestamp": None,
+        "source": None,
+        "fallback_errors": errors,
+    }
+
+
 @app.get(
     "/api/aqi",
     summary="Air Quality Index data",
     description=(
-        "Air quality data for the configured location from OpenWeatherMap. "
-        "Returns AQI (1-5), pollutant concentrations, and timestamp. "
-        "Cached 30 minutes. Requires OWM API key; gracefully unavailable if not configured."
+        "Air quality data for the configured location. "
+        "Uses OpenWeather AQI when configured, with keyless Open-Meteo fallback. "
+        "Returns AQI (1-5), pollutant concentrations, timestamp, and source. Cached 30 minutes."
     ),
     tags=["Weather"],
 )
 async def api_aqi():
-    if not PROVIDERS.get("openweather", {}).get("enabled") or not OWM_KEY:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "available": False,
-                "error": "OWM not configured",
-                "aqi": None,
-                "components": {},
-                "timestamp": None,
-            },
-        )
-    try:
-        result = await wc.get_owm_aqi(LAT, LON, OWM_KEY)
-        result["available"] = True
-        return result
-    except Exception as exc:
-        # Graceful fallback: AQI not critical
-        LOGGER.warning(f"AQI fetch failed: {redact_text(str(exc))}")
-        return JSONResponse(
-            status_code=200,
-            content={
-                "available": False,
-                "error": redact_text(str(exc)),
-                "aqi": None,
-                "components": {},
-                "timestamp": None,
-            },
-        )
+    result = await _resolve_aqi_payload()
+    if not result.get("available"):
+        LOGGER.warning(f"AQI fetch failed: {redact_text(str(result.get('error') or 'unknown error'))}")
+    return JSONResponse(status_code=200, content=result)
 
 
 @app.get(
@@ -2206,11 +2220,7 @@ async def api_ha_sensor():
         errors["alerts"] = redact_text(str(exc))
 
     try:
-        if PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY:
-            aqi_payload = await wc.get_owm_aqi(LAT, LON, OWM_KEY)
-            aqi_payload["available"] = True
-        else:
-            aqi_payload = {"available": False}
+        aqi_payload = await _resolve_aqi_payload()
     except Exception as exc:
         errors["aqi"] = redact_text(str(exc))
 

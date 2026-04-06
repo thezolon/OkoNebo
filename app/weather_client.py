@@ -20,6 +20,7 @@ _UPSTREAM_STATS_STARTED_AT = int(time.time())
 _UPSTREAM_CALL_STATS: dict[str, int] = {
     "nws": 0,
     "owm": 0,
+    "openmeteo_aqi": 0,
     "weatherapi": 0,
     "tomorrow": 0,
     "visualcrossing": 0,
@@ -640,6 +641,7 @@ async def get_alerts_multi(locations: list[dict], user_agent: str) -> list[dict]
 
 OWM_BASE = "https://api.openweathermap.org/data/3.0"
 OWM_AQI_BASE = "https://api.openweathermap.org/data/2.5"
+OPENMETEO_AQI_BASE = "https://air-quality-api.open-meteo.com/v1/air-quality"
 PWS_BASE = "https://api.weather.com/v2/pws/observations/current"
 PWS_HISTORY_BASE = "https://api.weather.com/v2/pws/observations/all/1day"
 WEATHERAPI_BASE = "https://api.weatherapi.com/v1"
@@ -1650,6 +1652,75 @@ async def get_owm_aqi(lat: float, lon: float, api_key: str) -> dict:
         }
 
     return await _get_or_refresh_shared(key, cache_type="aqi_owm", ttl=1800, producer=_producer)
+
+
+def _openmeteo_aqi_to_scale_1_5(eu_aqi: Any) -> int | None:
+    """Map Open-Meteo EU AQI (0-100+) to 1-5 scale used by existing UI."""
+    try:
+        value = float(eu_aqi)
+    except Exception:
+        return None
+    if value <= 20:
+        return 1
+    if value <= 40:
+        return 2
+    if value <= 60:
+        return 3
+    if value <= 80:
+        return 4
+    return 5
+
+
+async def get_openmeteo_aqi(lat: float, lon: float) -> dict:
+    """
+    Open-Meteo Air Quality endpoint — keyless AQI fallback.
+    Returns AQI mapped to 1-5 scale plus raw EU AQI for reference.
+    Cached 30 minutes.
+    """
+    key = f"aqi_openmeteo:{lat},{lon}"
+
+    async def _producer() -> dict:
+        data = await _json_get_with_retry(
+            OPENMETEO_AQI_BASE,
+            {
+                "latitude": lat,
+                "longitude": lon,
+                "current": "european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide",
+            },
+            upstream_name="openmeteo_aqi",
+        )
+        current = data.get("current", {}) if isinstance(data.get("current", {}), dict) else {}
+        eu_aqi = current.get("european_aqi")
+        mapped_aqi = _openmeteo_aqi_to_scale_1_5(eu_aqi)
+
+        if mapped_aqi is None:
+            return {
+                "aqi": None,
+                "main": None,
+                "components": {},
+                "timestamp": current.get("time"),
+                "available": False,
+                "source": "openmeteo",
+            }
+
+        return {
+            "aqi": mapped_aqi,
+            "main": mapped_aqi,
+            "components": {
+                "pm2_5": current.get("pm2_5"),
+                "pm10": current.get("pm10"),
+                "o3": current.get("ozone"),
+                "no2": current.get("nitrogen_dioxide"),
+                "so2": current.get("sulphur_dioxide"),
+                "co": current.get("carbon_monoxide"),
+            },
+            "timestamp": current.get("time"),
+            "available": True,
+            "source": "openmeteo",
+            "raw_european_aqi": eu_aqi,
+        }
+
+    return await _get_or_refresh_shared(key, cache_type="aqi_openmeteo", ttl=1800, producer=_producer)
 
 
 # ---------------------------------------------------------------------------

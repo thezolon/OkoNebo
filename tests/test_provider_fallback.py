@@ -1,5 +1,6 @@
 import unittest
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
@@ -238,6 +239,62 @@ class HistoryEndpointTests(unittest.IsolatedAsyncioTestCase):
         mock_history.assert_awaited_once_with(main.LAT, main.LON, hours=4)
         self.assertEqual(payload["hours"], 4)
         self.assertEqual([point["timestamp"] for point in payload["points"]], [100, 200])
+
+
+class AQIFallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_aqi_uses_keyless_openmeteo_when_owm_unconfigured(self):
+        main.PROVIDERS = {"openweather": {"enabled": False}}
+        main.OWM_KEY = ""
+
+        with patch(
+            "app.main.wc.get_openmeteo_aqi",
+            new=AsyncMock(return_value={"aqi": 2, "components": {}, "timestamp": 123, "available": True, "source": "openmeteo"}),
+        ) as mock_openmeteo:
+            payload = await main.api_aqi()
+
+        self.assertEqual(payload.status_code, 200)
+        body = json.loads(payload.body.decode("utf-8"))
+        self.assertTrue(body.get("available"))
+        self.assertEqual(body.get("source"), "openmeteo")
+        mock_openmeteo.assert_awaited_once()
+
+    async def test_aqi_prefers_openweather_when_available(self):
+        main.PROVIDERS = {"openweather": {"enabled": True}}
+        main.OWM_KEY = "key"
+
+        with (
+            patch(
+                "app.main.wc.get_owm_aqi",
+                new=AsyncMock(return_value={"aqi": 3, "components": {}, "timestamp": 456, "available": True, "source": "openweather"}),
+            ) as mock_owm,
+            patch("app.main.wc.get_openmeteo_aqi", new=AsyncMock()) as mock_openmeteo,
+        ):
+            payload = await main.api_aqi()
+
+        self.assertEqual(payload.status_code, 200)
+        body = json.loads(payload.body.decode("utf-8"))
+        self.assertEqual(body.get("source"), "openweather")
+        mock_owm.assert_awaited_once()
+        mock_openmeteo.assert_not_awaited()
+
+    async def test_aqi_falls_back_to_openmeteo_when_owm_errors(self):
+        main.PROVIDERS = {"openweather": {"enabled": True}}
+        main.OWM_KEY = "key"
+
+        with (
+            patch("app.main.wc.get_owm_aqi", new=AsyncMock(side_effect=RuntimeError("owm failed"))),
+            patch(
+                "app.main.wc.get_openmeteo_aqi",
+                new=AsyncMock(return_value={"aqi": 1, "components": {}, "timestamp": 789, "available": True, "source": "openmeteo"}),
+            ) as mock_openmeteo,
+        ):
+            payload = await main.api_aqi()
+
+        self.assertEqual(payload.status_code, 200)
+        body = json.loads(payload.body.decode("utf-8"))
+        self.assertEqual(body.get("source"), "openmeteo")
+        self.assertEqual((body.get("fallback_errors") or {}).get("openweather"), "owm failed")
+        mock_openmeteo.assert_awaited_once()
 
 
 class PushNotificationTests(unittest.IsolatedAsyncioTestCase):

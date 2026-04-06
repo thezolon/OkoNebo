@@ -53,9 +53,10 @@ Provider capability metadata is exposed via `/api/bootstrap` and used by fronten
 
 ### Air Quality Index (`/api/aqi`)
 
-- Sourced from OpenWeatherMap Air Pollution API.
+- Uses OpenWeather Air Pollution API when configured.
+- Falls back to keyless Open-Meteo Air Quality API when OpenWeather is disabled/unconfigured/unavailable.
 - Returns AQI index (1–5) and individual pollutant concentrations (PM2.5, PM10, O₃, NO₂, SO₂, CO).
-- Gracefully unavailable (`503`) if OWM API key is not configured.
+- Returns `source` metadata (`openweather` or `openmeteo`) and stays gracefully available when fallback succeeds.
 
 ### Historical Trends (`/api/history`)
 
