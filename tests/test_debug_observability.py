@@ -4,6 +4,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app import main
+from app.redaction import redact_text
 
 
 class DebugObservabilityTests(unittest.TestCase):
@@ -72,6 +73,43 @@ class DebugObservabilityTests(unittest.TestCase):
         self.assertGreaterEqual(obs_2.get("transitions_total", 0), 1)
         self.assertIn(obs_2.get("stability"), {"stable", "watch", "flapping"})
         self.assertIn("seconds_since_last_change", obs_2)
+
+    def test_debug_client_snapshot_redacts_secrets(self):
+        secret_url = "https://api.example.test/data?api_key=super-secret-key&appid=owm-secret"
+        payload = {
+            "request_url": secret_url,
+            "headers": {
+                "Authorization": "Bearer super-token",
+                "X-Api-Key": "top-secret",
+            },
+            "auth": {"enabled": True},
+            "password": "letmein",
+            "icon_health": {
+                "last_failed_url": secret_url,
+                "fallback_count": 1,
+            },
+        }
+
+        post_resp = self.client.post("/api/debug/client", json=payload)
+        self.assertEqual(post_resp.status_code, 200)
+
+        resp = self.client.get("/api/debug")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        client = body.get("client", {})
+        self.assertNotIn("super-secret-key", str(client))
+        self.assertNotIn("super-token", str(client))
+        self.assertEqual(client.get("password"), "[REDACTED]")
+        self.assertIn("[REDACTED]", client.get("request_url", ""))
+        self.assertIn("[REDACTED]", body.get("pws_icon_diagnostics", {}).get("last_failed_url", ""))
+
+    def test_redact_text_scrubs_urls_and_bearer_tokens(self):
+        raw = "GET https://example.test?api_key=abc123&password=hunter2 Authorization: Bearer token-123"
+        redacted = redact_text(raw)
+        self.assertNotIn("abc123", redacted)
+        self.assertNotIn("hunter2", redacted)
+        self.assertNotIn("token-123", redacted)
+        self.assertIn("[REDACTED]", redacted)
 
 
 if __name__ == "__main__":

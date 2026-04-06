@@ -37,6 +37,7 @@ from pywebpush import WebPushException, webpush
 
 from app import weather_client as wc
 from app.astro import compute_astro
+from app.redaction import install_logging_redaction, redact_text, redact_value
 from app.secure_settings import SecureSettingsStore
 
 try:
@@ -152,6 +153,7 @@ _LABEL_RE = re.compile(r"^[\w\s\-.,()&'/:]{1,100}$")
 _LOG_LEVEL = str(os.getenv("LOG_LEVEL") or "INFO").upper()
 logging.basicConfig(level=getattr(logging, _LOG_LEVEL, logging.INFO), format="%(message)s")
 LOGGER = logging.getLogger("okonebo")
+install_logging_redaction()
 _REQUEST_ID_CTX: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="n/a")
 
 
@@ -255,11 +257,12 @@ def _log_event(event: str, request: Request | None = None, level: str = "info", 
         "request_id": _request_id(request),
     }
     payload.update(fields)
+    safe_payload = redact_value(payload)
     logger_fn = getattr(LOGGER, level, LOGGER.info)
     try:
-        logger_fn(json.dumps(payload, sort_keys=True, default=str))
+        logger_fn(json.dumps(safe_payload, sort_keys=True, default=str))
     except Exception:
-        logger_fn(str(payload))
+        logger_fn(str(safe_payload))
 
 
 def _default_provider_config() -> dict[str, dict[str, Any]]:
@@ -785,7 +788,7 @@ async def _provider_attempt(
         )
         return _annotate_provider_source(endpoint, provider_id, payload)
     except Exception as exc:
-        provider_errors[provider_id] = str(exc)
+        provider_errors[provider_id] = redact_text(str(exc))
         _track_provider_outcome(endpoint, provider_id, "error")
         _log_event(
             "provider.attempt",
@@ -795,7 +798,7 @@ async def _provider_attempt(
             provider=provider_id,
             success=False,
             duration_ms=int((time.time() - started) * 1000),
-            error=str(exc),
+            error=redact_text(str(exc)),
         )
         return None
 
@@ -1158,7 +1161,7 @@ async def _send_push_notifications(payload: dict[str, Any]) -> None:
             if keep:
                 active.append(subscription)
         except Exception as exc:
-            LOGGER.warning(f"Push delivery error for {subscription.get('endpoint', '')}: {exc}")
+            LOGGER.warning(f"Push delivery error for {subscription.get('endpoint', '')}: {redact_text(str(exc))}")
             active.append(subscription)
 
     if len(active) != len(subscriptions):
@@ -1175,7 +1178,7 @@ async def _fire_webhook(url: str, payload: dict[str, Any]) -> None:
             _log_event("webhook.sent", None, url=url, status=response.status_code)
     except Exception as exc:
         _WEBHOOK_DELIVERY_STATS["failed"] += 1
-        _log_event("webhook.failed", None, level="warning", url=url, error=str(exc))
+        _log_event("webhook.failed", None, level="warning", url=url, error=redact_text(str(exc)))
 
 
 async def _check_threat_transition_and_fire_webhooks(current_alerts: list[dict]) -> None:
@@ -1236,7 +1239,7 @@ async def _check_threat_transition_and_fire_webhooks(current_alerts: list[dict])
             try:
                 await _fire_webhook(webhook["url"], payload)
             except Exception as exc:
-                LOGGER.warning(f"Webhook delivery error for {webhook['url']}: {exc}")
+                LOGGER.warning(f"Webhook delivery error for {webhook['url']}: {redact_text(str(exc))}")
 
 # ---------------------------------------------------------------------------
 # API routes
@@ -2089,7 +2092,7 @@ async def api_metar():
         result["source"] = "aviationweather"
         return result
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
 
 
 @app.get(
@@ -2143,12 +2146,12 @@ async def api_aqi():
         return result
     except Exception as exc:
         # Graceful fallback: AQI not critical
-        LOGGER.warning(f"AQI fetch failed: {exc}")
+        LOGGER.warning(f"AQI fetch failed: {redact_text(str(exc))}")
         return JSONResponse(
             status_code=200,
             content={
                 "available": False,
-                "error": str(exc),
+                "error": redact_text(str(exc)),
                 "aqi": None,
                 "components": {},
                 "timestamp": None,
@@ -2181,7 +2184,7 @@ async def api_ha_sensor():
     try:
         alerts = await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
     except Exception as exc:
-        errors["alerts"] = str(exc)
+        errors["alerts"] = redact_text(str(exc))
 
     try:
         if PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY:
@@ -2190,12 +2193,12 @@ async def api_ha_sensor():
         else:
             aqi_payload = {"available": False}
     except Exception as exc:
-        errors["aqi"] = str(exc)
+        errors["aqi"] = redact_text(str(exc))
 
     try:
         astro_payload = await api_astro()
     except Exception as exc:
-        errors["astro"] = str(exc)
+        errors["astro"] = redact_text(str(exc))
 
     threat_level, max_severity, alerts_count = _ha_threat_level(alerts)
     headlines = [str(a.get("headline") or a.get("event") or "").strip() for a in alerts][:5]
@@ -2306,7 +2309,7 @@ async def api_tides(days: int = Query(default=2, ge=1, le=7)):
     try:
         return await wc.get_noaa_tides(LAT, LON, days=days)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
 
 
 @app.get(
@@ -2330,7 +2333,7 @@ async def api_alerts():
         await _check_threat_transition_and_fire_webhooks(alert_list)
         return alerts
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
 
 
 @app.get(
@@ -2365,7 +2368,7 @@ async def api_owm():
             status_code=200,
             content={
                 "available": False,
-                "error": str(exc),
+                "error": redact_text(str(exc)),
                 "timezone": TIMEZONE,
                 "current": None,
                 "hourly": [],
@@ -2396,7 +2399,7 @@ async def api_pws():
     try:
         return await wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, PWS_KEY)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
 
 
 @app.get(
@@ -2421,7 +2424,7 @@ async def api_pws_trend(hours: int = Query(default=3, ge=1, le=24)):
     try:
         return await wc.get_pws_trend(PWS_PROVIDER, PWS_STATIONS, PWS_KEY, hours=hours)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
 
 
 @app.get(
@@ -2918,12 +2921,12 @@ async def api_test_provider(provider: str = Query("nws"), api_key: str | None = 
         else:
             raise HTTPException(
                 status_code=int(result.get("status_code") or 502),
-                detail=result.get("error", "Provider test failed"),
+                detail=redact_text(str(result.get("error", "Provider test failed"))),
             )
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Provider test error: {str(exc)}") from exc
+        raise HTTPException(status_code=502, detail=f"Provider test error: {redact_text(str(exc))}") from exc
 
 
 _DEBUG_CLIENT_MAX_BYTES = 65_536  # 64 KB
@@ -2940,7 +2943,7 @@ async def api_debug_client(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Expected JSON object")
-    DEBUG_STATE["last_client_snapshot"] = payload
+    DEBUG_STATE["last_client_snapshot"] = redact_value(payload)
     DEBUG_STATE["last_client_update"] = int(time.time())
     return {"ok": True}
 
@@ -2975,7 +2978,7 @@ async def owm_tile_proxy(layer: str, z: int, x: int, y: int):
             headers={"Cache-Control": "public, max-age=600"},
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
 
 
 # ---------------------------------------------------------------------------

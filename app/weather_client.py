@@ -12,6 +12,7 @@ from typing import Any, Awaitable, Callable, Optional
 import httpx
 
 from . import cache_db
+from .redaction import redact_text
 
 BASE = "https://api.weather.gov"
 
@@ -1771,7 +1772,7 @@ async def get_pws_observations(provider: str, station_ids: list[str], api_key: s
                 raw = await _pws_get_one(station_id, api_key)
                 stations.append(_norm_pws_observation(station_id, raw))
             except Exception as exc:
-                errors.append({"station_id": station_id, "error": str(exc)})
+                errors.append({"station_id": station_id, "error": redact_text(str(exc))})
 
         return {
             "provider": provider_name,
@@ -1872,7 +1873,7 @@ async def get_pws_trend(provider: str, station_ids: list[str], api_key: str, hou
                 raw = await _pws_get_history_one(station_id, api_key)
                 stations.append(_norm_pws_history(station_id, raw, safe_hours))
             except Exception as exc:
-                errors.append({"station_id": station_id, "error": str(exc)})
+                errors.append({"station_id": station_id, "error": redact_text(str(exc))})
 
         return {
             "provider": provider_name,
@@ -2052,6 +2053,6 @@ async def test_provider(
         return {
             "ok": False,
             "provider": provider_id,
-            "error": str(exc),
+            "error": redact_text(str(exc)),
         }
 

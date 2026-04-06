@@ -522,6 +522,37 @@ class SetupAuthIntegrationTests(unittest.TestCase):
         finally:
             main.wc.get_pws_observations = original
 
+    def test_test_provider_redacts_secret_values_in_error_detail(self):
+        main.AUTH_ENABLED = False
+        main.PROVIDERS["openweather"] = {"enabled": True}
+
+        original = main.wc.test_provider
+
+        async def fake_test_provider(**kwargs):
+            return {
+                "ok": False,
+                "provider": "openweather",
+                "error": "https://api.example.test/onecall?appid=super-secret-key Authorization: Bearer token-123",
+                "status_code": 400,
+            }
+
+        main.wc.test_provider = fake_test_provider
+        try:
+            resp = self.client.post(
+                "/api/test-provider",
+                json={
+                    "provider": "openweather",
+                    "enabled": True,
+                    "api_key": "unused",
+                },
+            )
+            self.assertEqual(resp.status_code, 400, resp.text)
+            self.assertNotIn("super-secret-key", resp.text)
+            self.assertNotIn("token-123", resp.text)
+            self.assertIn("[REDACTED]", resp.text)
+        finally:
+            main.wc.test_provider = original
+
 
 if __name__ == "__main__":
     unittest.main()
