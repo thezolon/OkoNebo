@@ -2154,10 +2154,17 @@ async function renderAstro(forceFetch = false) {
 }
 
 async function renderAqi(forceFetch = false) {
+    if (forceFetch || !cache.config) cache.config = await fetchAPIDeduped('/config');
     if (forceFetch || !cache.aqi) cache.aqi = await fetchAPIDeduped('/aqi');
     const aqi = cache.aqi || {};
+    const section = document.getElementById('aqi-section');
 
-    document.getElementById('aqi-section').style.display = '';
+    if (!cache.config?.owm_available) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
 
     if (!aqi.available) {
         document.getElementById('aqi-badge').textContent = '--';
