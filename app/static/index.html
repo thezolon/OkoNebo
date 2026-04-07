@@ -95,6 +95,15 @@
                 </div>
             </section>
 
+            <section class="panel-sec sidebar-alerts" id="firewatch-section">
+                <div class="panel-sec-hdr">
+                    <h3>Fire Watch <span id="firewatch-count" class="badge"></span></h3>
+                </div>
+                <div id="firewatch-container" class="alerts-container firewatch-container">
+                    <div class="no-alerts">No nearby wildfire incidents</div>
+                </div>
+            </section>
+
             <div class="sidebar-controls">
                 <div class="ctrl-row">
                     <label class="ctrl-lbl" for="unit-select">Units</label>
@@ -173,6 +182,9 @@
                     </label>
                     <label class="ctrl-lbl-sm chk">
                         <input id="alert-polygons-toggle" type="checkbox" checked> Alerts
+                    </label>
+                    <label class="ctrl-lbl-sm chk">
+                        <input id="fire-overlay-toggle" type="checkbox" checked> Fires
                     </label>
                     <button id="alert-test-toggle-btn" class="map-btn" title="Toggle synthetic test alert polygon">Test Alert</button>
                 </div>

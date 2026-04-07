@@ -17,6 +17,7 @@ const state = {
     pwsTrendHours: 3,
     currentSourceIndex: 0,
     showAlertPolygons: true,
+    showFireOverlay: true,
     showTestAlert: false,
     isOffline: false,
     browserOffline: typeof navigator !== 'undefined' ? !navigator.onLine : false,
@@ -41,11 +42,13 @@ const AUTH_TOKEN_STORAGE_KEY = 'weatherapp.auth.token';
 
 const cache = {
     config: null,
+    bootstrap: null,
     current: null,
     multiCurrent: null,
     forecast: [],
     hourly: [],
     alerts: [],
+    firewatch: [],
     owm: null,
     pws: null,
     pwsTrend: null,
@@ -96,6 +99,7 @@ let radarFrames = [];
 let radarOverlayLayer = null;
 let owmOverlayLayer = null;
 let alertPolygonsLayer = null;
+let fireIncidentsLayer = null;
 let alertLegendControl = null;
 let monitoredLocationsLayer = null;
 let radarAnimating = false;
@@ -104,6 +108,7 @@ let currentRFrameIndex = 0;
 
 let timerFullRefresh = null;
 let timerAgeRefresh = null;
+let viewportOverlayTimer = null;
 
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
@@ -135,6 +140,7 @@ const runtime = {
     pushConfig: null,
     appVersion: '--',
     appBuild: '',
+    owmOverlayWarned: false,
 };
 
 function renderRuntimeVersion() {
@@ -1069,6 +1075,109 @@ function zoomToAlert(alert) {
     }
 }
 
+function _overlayFetchLimitForZoom(zoom) {
+    if (!Number.isFinite(zoom)) return 200;
+    if (zoom <= 5) return 500;
+    if (zoom <= 7) return 300;
+    if (zoom <= 9) return 200;
+    return 120;
+}
+
+function _roundedBounds(bounds) {
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const round2 = (v) => Math.round(v * 100) / 100;
+    return {
+        min_lat: round2(sw.lat),
+        min_lon: round2(sw.lng),
+        max_lat: round2(ne.lat),
+        max_lon: round2(ne.lng),
+    };
+}
+
+function _fireMarkerStyle(acres) {
+    const n = Number(acres);
+    if (!Number.isFinite(n) || n <= 0) {
+        return { radius: 6, color: '#f0b429', fillColor: '#f8d26a', fillOpacity: 0.75, weight: 1.5 };
+    }
+    if (n >= 10000) {
+        return { radius: 12, color: '#9b1c1c', fillColor: '#ef4444', fillOpacity: 0.82, weight: 2 };
+    }
+    if (n >= 1000) {
+        return { radius: 10, color: '#c2410c', fillColor: '#fb923c', fillOpacity: 0.8, weight: 2 };
+    }
+    if (n >= 100) {
+        return { radius: 8, color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.78, weight: 1.8 };
+    }
+    return { radius: 6, color: '#f59e0b', fillColor: '#fde047', fillOpacity: 0.76, weight: 1.5 };
+}
+
+async function renderFireOverlay(forceFetch = false) {
+    if (!radarMap) return;
+
+    if (fireIncidentsLayer) {
+        radarMap.removeLayer(fireIncidentsLayer);
+        fireIncidentsLayer = null;
+    }
+
+    if (!state.showFireOverlay) return;
+
+    const bounds = radarMap.getBounds();
+    if (!bounds || !bounds.isValid()) return;
+
+    const rounded = _roundedBounds(bounds);
+    const limit = _overlayFetchLimitForZoom(radarMap.getZoom());
+    const endpoint = `/firewatch?min_lat=${rounded.min_lat}&min_lon=${rounded.min_lon}&max_lat=${rounded.max_lat}&max_lon=${rounded.max_lon}&limit=${limit}`;
+    let payload = null;
+    if (forceFetch) {
+        payload = await fetchAPI(endpoint);
+    } else {
+        payload = await fetchAPIDeduped(endpoint);
+    }
+    const incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
+    if (!incidents.length) return;
+
+    fireIncidentsLayer = L.layerGroup();
+    incidents.forEach((incident) => {
+        const lat = Number(incident?.location?.lat);
+        const lon = Number(incident?.location?.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+        const style = _fireMarkerStyle(incident?.acres);
+        const acresText = formatFirewatchAcres(incident?.acres);
+        const containmentText = formatFirewatchContainment(incident?.containment_percent);
+        const countyState = [incident?.county, incident?.state].filter(Boolean).join(', ');
+        const updated = incident?.updated_at ? formatTime(incident.updated_at) : '--';
+
+        const marker = L.circleMarker([lat, lon], style);
+        marker.bindPopup(`
+            <div style="min-width:220px">
+                <strong>${escapeHtml(String(incident?.name || 'Wildfire Incident'))}</strong>
+                <div>${escapeHtml(acresText)} · ${escapeHtml(containmentText)}</div>
+                ${countyState ? `<div>${escapeHtml(countyState)}</div>` : ''}
+                <div>Updated ${escapeHtml(updated)}</div>
+            </div>
+        `);
+        marker.addTo(fireIncidentsLayer);
+    });
+
+    fireIncidentsLayer.addTo(radarMap);
+    if (typeof fireIncidentsLayer.bringToFront === 'function') {
+        fireIncidentsLayer.bringToFront();
+    }
+}
+
+function scheduleViewportOverlayRefresh(forceFetch = false) {
+    if (!radarMap) return;
+    if (viewportOverlayTimer) clearTimeout(viewportOverlayTimer);
+    viewportOverlayTimer = setTimeout(() => {
+        renderAlertPolygons();
+        renderFireOverlay(forceFetch).catch(() => {
+            // Keep map responsive even if fire overlay fetch fails.
+        });
+    }, 180);
+}
+
 function renderAlertPolygons() {
     if (!radarMap) return;
 
@@ -1080,8 +1189,19 @@ function renderAlertPolygons() {
     updateAlertLegendVisibility();
     if (!state.showAlertPolygons) return;
 
+    const mapBounds = radarMap.getBounds();
+    const inViewport = (geometry) => {
+        if (!geometry || !mapBounds || !mapBounds.isValid()) return false;
+        try {
+            const bounds = L.geoJSON({ type: 'Feature', geometry }).getBounds();
+            return bounds.isValid() && mapBounds.intersects(bounds);
+        } catch (err) {
+            return false;
+        }
+    };
+
     const features = getEffectiveAlerts()
-        .filter((alert) => alert && alert.geometry)
+        .filter((alert) => alert && alert.geometry && inViewport(alert.geometry))
         .map((alert) => ({
             type: 'Feature',
             geometry: alert.geometry,
@@ -1153,6 +1273,11 @@ function setSourceDot(id, status) {
     const el = document.getElementById(id);
     if (!el) return;
     el.className = `src-dot dot-${status}`;
+}
+
+function setElementVisible(el, visible) {
+    if (!el) return;
+    el.style.display = visible ? '' : 'none';
 }
 
 function signed(value, digits = 1) {
@@ -1495,6 +1620,7 @@ function persistRuntimeCache() {
             forecast: cache.forecast,
             hourly: cache.hourly,
             alerts: cache.alerts,
+            firewatch: cache.firewatch,
             owm: cache.owm,
             pws: cache.pws,
             pwsTrend: cache.pwsTrend,
@@ -1519,6 +1645,9 @@ function restorePersistentState() {
     }
     if (persistent.cache && persistent.cache.alerts) {
         cache.alerts = persistent.cache.alerts;
+    }
+    if (persistent.cache && persistent.cache.firewatch) {
+        cache.firewatch = persistent.cache.firewatch;
     }
     if (persistent.cache && persistent.cache.owm) {
         cache.owm = persistent.cache.owm;
@@ -1900,8 +2029,39 @@ async function fetchAPIDeduped(endpoint) {
 
 async function renderHeader(forceFetch = false) {
     if (forceFetch || !cache.config) cache.config = await fetchAPIDeduped('/config');
+    if (forceFetch || !cache.bootstrap) {
+        try {
+            cache.bootstrap = await fetchAPIDeduped('/bootstrap');
+        } catch (err) {
+            cache.bootstrap = cache.bootstrap || null;
+        }
+    }
+
     const lbl = document.getElementById('location-label');
     if (lbl) lbl.textContent = cache.config.label || 'Weather';
+
+    const owmProvider = cache.bootstrap?.providers?.openweather || null;
+    const owmUiAvailable = owmProvider
+        ? !!(owmProvider.enabled && owmProvider.configured)
+        : !!cache.config?.owm_available;
+
+    const owmSelect = document.getElementById('owm-overlay');
+    if (owmSelect) {
+        setElementVisible(owmSelect, owmUiAvailable);
+        owmSelect.disabled = !owmUiAvailable;
+        owmSelect.title = owmUiAvailable
+            ? 'OpenWeather tile overlays'
+            : '';
+        if (!owmUiAvailable && state.owmOverlay !== 'none') {
+            state.owmOverlay = 'none';
+            owmSelect.value = 'none';
+        }
+    }
+
+    setElementVisible(document.getElementById('owm-dot'), owmUiAvailable);
+    const owmAge = document.getElementById('owm-age');
+    setElementVisible(owmAge ? owmAge.closest('.source-age-card') : null, owmUiAvailable);
+
     renderTimeline();
 }
 
@@ -2081,6 +2241,83 @@ function updateAlertTicker(alerts) {
     shell.classList.add('has-ticker');
 }
 
+function formatFirewatchAcres(acres) {
+    const n = Number(acres);
+    if (!Number.isFinite(n) || n < 0) return '--';
+    if (n >= 1000) return `${Math.round(n).toLocaleString()} ac`;
+    if (n >= 100) return `${Math.round(n)} ac`;
+    return `${n.toFixed(1)} ac`;
+}
+
+function formatFirewatchContainment(percent) {
+    const n = Number(percent);
+    if (!Number.isFinite(n) || n < 0) return 'Containment --';
+    return `Containment ${Math.round(Math.min(n, 100))}%`;
+}
+
+async function renderFireWatch(forceFetch = false) {
+    const container = document.getElementById('firewatch-container');
+    const badge = document.getElementById('firewatch-count');
+    if (!container || !badge) return;
+
+    try {
+        if (forceFetch || cache.firewatch.length === 0) {
+            const payload = await fetchAPIDeduped('/firewatch');
+            cache.firewatch = Array.isArray(payload?.incidents) ? payload.incidents : [];
+        }
+    } catch (err) {
+        // Firewatch is additive; keep the dashboard usable when upstream incident feeds fail.
+        cache.firewatch = [];
+        container.innerHTML = '<div class="no-alerts">Fire Watch temporarily unavailable</div>';
+        badge.textContent = '';
+        return;
+    }
+
+    container.innerHTML = '';
+    badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
+
+    if (!cache.firewatch.length) {
+        container.innerHTML = '<div class="no-alerts">No nearby wildfire incidents</div>';
+        return;
+    }
+
+    cache.firewatch.slice(0, 15).forEach((incident) => {
+        const card = document.createElement('div');
+        card.className = 'alert-card fire-card severe';
+
+        const locs = Array.isArray(incident?.monitored_locations) ? incident.monitored_locations : [];
+        const nearest = incident?.nearest_location ? `Nearest: ${escapeHtml(String(incident.nearest_location))}` : '';
+        const distance = Number.isFinite(Number(incident?.nearest_distance_miles))
+            ? `${Number(incident.nearest_distance_miles).toFixed(1)} mi`
+            : '--';
+        const updated = incident?.updated_at ? formatTime(incident.updated_at) : '--';
+        const stateCounty = [incident?.county, incident?.state].filter(Boolean).join(', ');
+
+        card.innerHTML = `
+            <div class="alert-event">${escapeHtml(String(incident?.name || 'Wildfire Incident'))}</div>
+            <div class="alert-meta">
+                <span>${escapeHtml(formatFirewatchAcres(incident?.acres))}</span>
+                <span>${escapeHtml(formatFirewatchContainment(incident?.containment_percent))}</span>
+                <span>${escapeHtml(distance)}</span>
+            </div>
+            ${stateCounty ? `<div class="alert-coverage">${escapeHtml(stateCounty)}</div>` : ''}
+            ${nearest ? `<div class="alert-coverage">${nearest}</div>` : ''}
+            ${locs.length ? `<div class="alert-coverage">Monitoring ${escapeHtml(locs.join(' · '))}</div>` : ''}
+            <div class="alert-desc">Updated ${escapeHtml(updated)}</div>
+        `;
+
+        card.addEventListener('click', () => {
+            const fireLat = Number(incident?.location?.lat);
+            const fireLon = Number(incident?.location?.lon);
+            if (radarMap && Number.isFinite(fireLat) && Number.isFinite(fireLon)) {
+                radarMap.setView([fireLat, fireLon], Math.max(radarMap.getZoom(), 8));
+            }
+        });
+
+        container.appendChild(card);
+    });
+}
+
 async function renderAlerts(forceFetch = false) {
     if (forceFetch || cache.alerts.length === 0) cache.alerts = await fetchAPIDeduped('/alerts');
 
@@ -2139,6 +2376,7 @@ async function renderAlerts(forceFetch = false) {
 
     updateAlertTicker(effectiveAlerts);
     renderAlertPolygons();
+    renderFireOverlay(false).catch(() => {});
     renderStormIndex();
     renderSourceAges();
     renderTimeline();
@@ -2707,12 +2945,29 @@ function applyOwmOverlay(layer) {
     }
     if (!layer || layer === 'none') return;
 
+    if (!cache.config?.owm_available) {
+        const select = document.getElementById('owm-overlay');
+        if (select) select.value = 'none';
+        state.owmOverlay = 'none';
+        if (!runtime.owmOverlayWarned) {
+            runtime.owmOverlayWarned = true;
+            showError('OWM overlays require OpenWeather provider + API key in setup.');
+        }
+        return;
+    }
+
     owmOverlayLayer = L.tileLayer(`/api/owm-tile/${layer}/{z}/{x}/{y}`, {
         attribution: 'OpenWeather',
-        opacity: 0.5,
+        opacity: 0.7,
         maxZoom: 18,
         zIndex: 5,
     }).addTo(radarMap);
+
+    owmOverlayLayer.on('tileerror', () => {
+        if (runtime.owmOverlayWarned) return;
+        runtime.owmOverlayWarned = true;
+        showError('OWM overlay tiles unavailable. Check OpenWeather key/plan/provider settings.');
+    });
 }
 
 function updateRadarControlAvailability() {
@@ -2841,7 +3096,13 @@ async function initRadar() {
     ensureAlertLegend();
     applyOwmOverlay(state.owmOverlay);
     updateRadarControlAvailability();
-    renderAlertPolygons();
+    scheduleViewportOverlayRefresh(false);
+    if (!radarMap.__viewportOverlayBound) {
+        radarMap.on('moveend zoomend', () => {
+            scheduleViewportOverlayRefresh(true);
+        });
+        radarMap.__viewportOverlayBound = true;
+    }
     await refreshRadar(true);
 }
 
@@ -2857,10 +3118,11 @@ async function loadStormMode(forceFetch = false) {
         renderHeader(false),
         renderCurrent(forceFetch),
         renderAlerts(forceFetch),
+        renderFireWatch(forceFetch),
         renderPws(forceFetch),
         initRadar(),
     ];
-    const criticalNames = ['header', 'current', 'alerts', 'pws', 'radar'];
+    const criticalNames = ['header', 'current', 'alerts', 'firewatch', 'pws', 'radar'];
     const results = await Promise.allSettled(criticalTasks);
     const failures = [];
 
@@ -3235,6 +3497,7 @@ async function saveSetupSettings() {
         setupStatus('Saved. Refreshing dashboard with new settings...', 'ok');
         cache.config = null;
         cache.alerts = [];
+        cache.firewatch = [];
         cache.current = null;
         runtime.firstRunRequired = false;
         hideFirstRunOverlay();
@@ -3444,6 +3707,11 @@ function setupControls() {
         renderAlertPolygons();
     });
 
+    document.getElementById('fire-overlay-toggle').addEventListener('change', (e) => {
+        state.showFireOverlay = e.target.checked;
+        scheduleViewportOverlayRefresh(false);
+    });
+
     document.getElementById('alert-test-toggle-btn').addEventListener('click', async () => {
         state.showTestAlert = !state.showTestAlert;
         updateAlertTestButton();
@@ -3563,6 +3831,7 @@ async function loadAll(forceFetch = false) {
         renderForecast(forceFetch),
         renderHourly(forceFetch),
         renderAlerts(forceFetch),
+        renderFireWatch(forceFetch),
         renderPushControls(forceFetch),
         renderPws(forceFetch),
         renderAstro(forceFetch),
@@ -3570,7 +3839,7 @@ async function loadAll(forceFetch = false) {
         initRadar(),
     ];
 
-    const sectionNames = ['header', 'current', 'multi-current', 'forecast', 'hourly', 'alerts', 'push', 'pws', 'astro', 'aqi', 'radar'];
+    const sectionNames = ['header', 'current', 'multi-current', 'forecast', 'hourly', 'alerts', 'firewatch', 'push', 'pws', 'astro', 'aqi', 'radar'];
     const nwsResults = await Promise.allSettled(tasks);
 
     try {

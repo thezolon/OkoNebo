@@ -849,6 +849,8 @@ html.admin-page body.admin-page {
 .alert-card.severe   { border-color: var(--sev-severe);   background: rgba(255,126,71,0.08); }
 .alert-card.moderate { border-color: var(--sev-moderate); background: rgba(245,197,24,0.06); }
 .alert-card.minor    { border-color: var(--sev-minor);    background: rgba(91,158,244,0.06); }
+.alert-card.fire-card { border-left-width: 4px; }
+.alert-card.fire-card.severe { background: rgba(255, 126, 71, 0.12); }
 .alert-card.synthetic { box-shadow: inset 0 0 0 1px rgba(90, 167, 216, 0.35); }
 
 .alert-event {

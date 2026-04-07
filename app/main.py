@@ -118,7 +118,7 @@ PROVIDER_KEY_ENV = {
 }
 
 AGENT_SCOPE_DEFINITIONS: dict[str, str] = {
-    "weather.read": "Read weather observations, forecasts, alerts, METAR, tides, AQI, and PWS feeds",
+    "weather.read": "Read weather observations, forecasts, alerts, fire incidents, METAR, tides, AQI, and PWS feeds",
     "config.read": "Read bootstrap/config metadata",
     "stats.read": "Read upstream provider call counters",
     "debug.read": "Read debug telemetry payload",
@@ -133,6 +133,7 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
     "/api/forecast": "weather.read",
     "/api/hourly": "weather.read",
     "/api/alerts": "weather.read",
+    "/api/firewatch": "weather.read",
     "/api/metar": "weather.read",
     "/api/tides": "weather.read",
     "/api/aqi": "weather.read",
@@ -1575,6 +1576,7 @@ async def api_capabilities():
             {"name": "get_forecast", "endpoint": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "endpoint": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "endpoint": "/api/alerts", "scope": "weather.read"},
+            {"name": "get_firewatch", "endpoint": "/api/firewatch", "scope": "weather.read"},
             {"name": "get_metar", "endpoint": "/api/metar", "scope": "weather.read"},
             {"name": "get_tides", "endpoint": "/api/tides", "scope": "weather.read"},
             {"name": "get_pws", "endpoint": "/api/pws", "scope": "weather.read"},
@@ -1624,6 +1626,7 @@ async def api_agent_profile(request: Request):
             {"name": "get_forecast", "method": "GET", "path": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "method": "GET", "path": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "method": "GET", "path": "/api/alerts", "scope": "weather.read"},
+            {"name": "get_firewatch", "method": "GET", "path": "/api/firewatch", "scope": "weather.read"},
             {"name": "get_metar", "method": "GET", "path": "/api/metar", "scope": "weather.read"},
             {"name": "get_tides", "method": "GET", "path": "/api/tides", "scope": "weather.read"},
             {"name": "get_pws", "method": "GET", "path": "/api/pws", "scope": "weather.read"},
@@ -1672,6 +1675,7 @@ async def api_agent_instructions_txt():
         "- get_forecast -> GET /api/forecast",
         "- get_hourly -> GET /api/hourly",
         "- get_alerts -> GET /api/alerts",
+        "- get_firewatch -> GET /api/firewatch",
         "- get_metar -> GET /api/metar",
         "- get_tides -> GET /api/tides?days=2",
         "- get_stats -> GET /api/stats",
@@ -2361,6 +2365,43 @@ async def api_alerts():
         alert_list = alerts.get("alerts", []) if isinstance(alerts, dict) else alerts
         await _check_threat_transition_and_fire_webhooks(alert_list)
         return alerts
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
+
+
+@app.get(
+    "/api/firewatch",
+    summary="Nearby active wildfire incidents",
+    description=(
+        "Keyless wildfire incident feed around monitored home/work points using "
+        "NIFC WFIGS incident locations. Returns de-duplicated incidents with "
+        "distance, acres, containment, and nearest monitored location. Cached 5 minutes."
+    ),
+    tags=["Weather"],
+)
+async def api_firewatch(
+    radius_miles: int = Query(default=250, ge=25, le=500),
+    limit: int = Query(default=30, ge=1, le=500),
+    min_lat: float | None = Query(default=None, ge=-90, le=90),
+    min_lon: float | None = Query(default=None, ge=-180, le=180),
+    max_lat: float | None = Query(default=None, ge=-90, le=90),
+    max_lon: float | None = Query(default=None, ge=-180, le=180),
+):
+    try:
+        has_bbox = all(v is not None for v in (min_lat, min_lon, max_lat, max_lon))
+        if has_bbox:
+            return await wc.get_fire_incidents_bbox(
+                float(min_lat),
+                float(min_lon),
+                float(max_lat),
+                float(max_lon),
+                max_results=min(limit, 500),
+            )
+        return await wc.get_fire_incidents_multi(
+            ALERT_LOCATIONS,
+            radius_miles=radius_miles,
+            max_results=limit,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
 
