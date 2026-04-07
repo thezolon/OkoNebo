@@ -506,33 +506,63 @@ def _cache_warm_interval_seconds() -> int:
 
 
 async def _run_cache_warm_cycle() -> None:
+    async def _warm(label: str, producer: Callable[[], Awaitable[Any]]) -> None:
+        try:
+            await producer()
+        except Exception as exc:
+            LOGGER.warning(f"Cache warm {label} failed: {redact_text(str(exc))}")
+
     if PROVIDERS.get("nws", {}).get("enabled"):
-        try:
-            await wc.get_current(LAT, LON, USER_AGENT)
-        except Exception as exc:
-            LOGGER.warning(f"Cache warm current failed: {redact_text(str(exc))}")
+        await _warm("nws-current", lambda: wc.get_current(LAT, LON, USER_AGENT))
+        await _warm("nws-forecast", lambda: wc.get_forecast(LAT, LON, USER_AGENT))
+        await _warm("nws-hourly", lambda: wc.get_hourly(LAT, LON, USER_AGENT))
+        await _warm("nws-alerts", lambda: wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT))
 
-        try:
-            await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
-        except Exception as exc:
-            LOGGER.warning(f"Cache warm alerts failed: {redact_text(str(exc))}")
-
-    try:
-        await wc.get_fire_incidents_multi(ALERT_LOCATIONS, radius_miles=250, max_results=60)
-    except Exception as exc:
-        LOGGER.warning(f"Cache warm firewatch failed: {redact_text(str(exc))}")
+    # Fire watch is keyless and should stay warm regardless of viewer activity.
+    await _warm("firewatch", lambda: wc.get_fire_incidents_multi(ALERT_LOCATIONS, radius_miles=250, max_results=60))
 
     if PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY:
-        try:
-            await wc.get_owm_onecall(LAT, LON, OWM_KEY)
-        except Exception as exc:
-            LOGGER.warning(f"Cache warm openweather failed: {redact_text(str(exc))}")
+        await _warm("openweather-onecall", lambda: wc.get_owm_onecall(LAT, LON, OWM_KEY))
+        await _warm("openweather-aqi", lambda: wc.get_owm_aqi(LAT, LON, OWM_KEY))
+
+    # AQI keyless fallback keeps the AQI panel warm even when OWM key is absent.
+    await _warm("openmeteo-aqi", lambda: wc.get_openmeteo_aqi(LAT, LON))
 
     if PROVIDERS.get("pws", {}).get("enabled") and PWS_KEY and PWS_STATIONS:
-        try:
-            await wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, PWS_KEY)
-        except Exception as exc:
-            LOGGER.warning(f"Cache warm pws failed: {redact_text(str(exc))}")
+        await _warm("pws-current", lambda: wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, PWS_KEY))
+        await _warm("pws-trend", lambda: wc.get_pws_trend(PWS_PROVIDER, PWS_STATIONS, PWS_KEY, hours=3))
+
+    if PROVIDERS.get("weatherapi", {}).get("enabled"):
+        weatherapi_key = _provider_api_key("weatherapi")
+        if weatherapi_key:
+            await _warm("weatherapi-current", lambda: wc.get_weatherapi_current(LAT, LON, weatherapi_key))
+            await _warm("weatherapi-forecast", lambda: wc.get_weatherapi_forecast(LAT, LON, weatherapi_key))
+            await _warm("weatherapi-hourly", lambda: wc.get_weatherapi_hourly(LAT, LON, weatherapi_key))
+
+    if PROVIDERS.get("tomorrow", {}).get("enabled"):
+        tomorrow_key = _provider_api_key("tomorrow")
+        if tomorrow_key:
+            await _warm("tomorrow-current", lambda: wc.get_tomorrow_current(LAT, LON, tomorrow_key))
+            await _warm("tomorrow-forecast", lambda: wc.get_tomorrow_forecast(LAT, LON, tomorrow_key))
+            await _warm("tomorrow-hourly", lambda: wc.get_tomorrow_hourly(LAT, LON, tomorrow_key))
+
+    if PROVIDERS.get("visualcrossing", {}).get("enabled"):
+        visualcrossing_key = _provider_api_key("visualcrossing")
+        if visualcrossing_key:
+            await _warm("visualcrossing-current", lambda: wc.get_visualcrossing_current(LAT, LON, visualcrossing_key))
+            await _warm("visualcrossing-forecast", lambda: wc.get_visualcrossing_forecast(LAT, LON, visualcrossing_key))
+            await _warm("visualcrossing-hourly", lambda: wc.get_visualcrossing_hourly(LAT, LON, visualcrossing_key))
+
+    if PROVIDERS.get("meteomatics", {}).get("enabled"):
+        meteomatics_key = _provider_api_key("meteomatics")
+        if meteomatics_key and ":" in meteomatics_key:
+            await _warm("meteomatics-current", lambda: wc.get_meteomatics_current(LAT, LON, meteomatics_key))
+
+    if PROVIDERS.get("aviationweather", {}).get("enabled"):
+        await _warm("aviationweather-metar", lambda: wc.get_aviationweather_metar(LAT, LON, USER_AGENT))
+
+    if PROVIDERS.get("noaa_tides", {}).get("enabled"):
+        await _warm("noaa-tides", lambda: wc.get_noaa_tides(LAT, LON, days=2))
 
 
 async def _cache_warm_loop(stop_event: asyncio.Event) -> None:
