@@ -1157,7 +1157,7 @@ async function renderFireOverlay(forceFetch = false) {
         fireIncidentsLayer = null;
     }
 
-    if (!state.showFireOverlay) return;
+    if (state.owmOverlay !== 'fires' || !state.showFireOverlay) return;
 
     const bounds = radarMap.getBounds();
     if (!bounds || !bounds.isValid()) return;
@@ -1185,12 +1185,22 @@ async function renderFireOverlay(forceFetch = false) {
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
         const style = _fireMarkerStyle(incident?.acres);
+        const iconSize = Math.max(14, Math.round(style.radius * 2));
         const acresText = formatFirewatchAcres(incident?.acres);
         const containmentText = formatFirewatchContainment(incident?.containment_percent);
         const countyState = [incident?.county, incident?.state].filter(Boolean).join(', ');
         const updated = incident?.updated_at ? formatTime(incident.updated_at) : '--';
 
-        const marker = L.circleMarker([lat, lon], style);
+        const marker = L.marker([lat, lon], {
+            icon: L.divIcon({
+                className: 'fire-icon-marker',
+                html: `<span style="font-size:${iconSize}px;filter: drop-shadow(0 0 2px rgba(0,0,0,0.65));">🔥</span>`,
+                iconSize: [iconSize, iconSize],
+                iconAnchor: [iconSize / 2, iconSize / 2],
+            }),
+            keyboard: true,
+            title: incident?.name || 'Wildfire Incident',
+        });
         marker.bindPopup(`
             <div style="min-width:220px">
                 <strong>${escapeHtml(String(incident?.name || 'Wildfire Incident'))}</strong>
@@ -1214,6 +1224,9 @@ function scheduleViewportOverlayRefresh(forceFetch = false) {
     viewportOverlayTimer = setTimeout(() => {
         updateAlertViewportCount();
         renderAlertPolygons();
+        renderFireWatch(false).catch(() => {
+            // Keep map responsive if sidebar firewatch filtering fails.
+        });
         renderFireOverlay(forceFetch).catch(() => {
             // Keep map responsive even if fire overlay fetch fails.
         });
@@ -2314,6 +2327,17 @@ function formatFirewatchContainment(percent) {
 }
 
 async function renderFireWatch(forceFetch = false) {
+    const incidentsInViewport = (incidents) => {
+        if (!radarMap) return incidents;
+        const bounds = radarMap.getBounds();
+        if (!bounds || !bounds.isValid()) return incidents;
+        return incidents.filter((incident) => {
+            const lat = Number(incident?.location?.lat);
+            const lon = Number(incident?.location?.lon);
+            return Number.isFinite(lat) && Number.isFinite(lon) && bounds.contains([lat, lon]);
+        });
+    };
+
     const renderFirewatchCards = (container, incidents) => {
         incidents.slice(0, 15).forEach((incident) => {
             const card = document.createElement('div');
@@ -2382,7 +2406,8 @@ async function renderFireWatch(forceFetch = false) {
             }
         }
         container.innerHTML = '';
-        badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
+        const visibleIncidents = incidentsInViewport(cache.firewatch);
+        badge.textContent = visibleIncidents.length ? String(visibleIncidents.length) : '';
 
         if (!cache.firewatch.length) {
             if (runtime.firewatchFeedError) {
@@ -2393,6 +2418,11 @@ async function renderFireWatch(forceFetch = false) {
             return;
         }
 
+        if (!visibleIncidents.length) {
+            container.innerHTML = '<div class="no-alerts">No incidents in current map view</div>';
+            return;
+        }
+
         if (runtime.firewatchFeedError) {
             const delayed = document.createElement('div');
             delayed.className = 'no-alerts';
@@ -2400,7 +2430,7 @@ async function renderFireWatch(forceFetch = false) {
             container.appendChild(delayed);
         }
 
-        renderFirewatchCards(container, cache.firewatch);
+        renderFirewatchCards(container, visibleIncidents);
     } catch (err) {
         // Firewatch is additive; keep the dashboard usable when upstream incident feeds fail.
         if (!Array.isArray(cache.firewatch)) {
