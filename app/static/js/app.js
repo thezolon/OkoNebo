@@ -1286,10 +1286,12 @@ function updateOwmOverlayOptions(owmAvailable) {
     if (!select) return;
     Array.from(select.options || []).forEach((opt) => {
         const isNone = String(opt.value || '') === 'none';
-        opt.disabled = !isNone && !owmAvailable;
-        opt.hidden = !isNone && !owmAvailable;
+        const isFire = String(opt.value || '') === 'fires';
+        // Fire overlay is keyless; keep it available even when OWM overlays are unavailable.
+        opt.disabled = !isNone && !isFire && !owmAvailable;
+        opt.hidden = !isNone && !isFire && !owmAvailable;
     });
-    if (!owmAvailable && state.owmOverlay !== 'none') {
+    if (!owmAvailable && state.owmOverlay !== 'none' && state.owmOverlay !== 'fires') {
         state.owmOverlay = 'none';
         select.value = 'none';
     }
@@ -2269,6 +2271,44 @@ function formatFirewatchContainment(percent) {
 }
 
 async function renderFireWatch(forceFetch = false) {
+    const renderFirewatchCards = (container, incidents) => {
+        incidents.slice(0, 15).forEach((incident) => {
+            const card = document.createElement('div');
+            card.className = 'alert-card fire-card severe';
+
+            const locs = Array.isArray(incident?.monitored_locations) ? incident.monitored_locations : [];
+            const nearest = incident?.nearest_location ? `Nearest: ${escapeHtml(String(incident.nearest_location))}` : '';
+            const distance = Number.isFinite(Number(incident?.nearest_distance_miles))
+                ? `${Number(incident.nearest_distance_miles).toFixed(1)} mi`
+                : '--';
+            const updated = incident?.updated_at ? formatTime(incident.updated_at) : '--';
+            const stateCounty = [incident?.county, incident?.state].filter(Boolean).join(', ');
+
+            card.innerHTML = `
+                <div class="alert-event">${escapeHtml(String(incident?.name || 'Wildfire Incident'))}</div>
+                <div class="alert-meta">
+                    <span>${escapeHtml(formatFirewatchAcres(incident?.acres))}</span>
+                    <span>${escapeHtml(formatFirewatchContainment(incident?.containment_percent))}</span>
+                    <span>${escapeHtml(distance)}</span>
+                </div>
+                ${stateCounty ? `<div class="alert-coverage">${escapeHtml(stateCounty)}</div>` : ''}
+                ${nearest ? `<div class="alert-coverage">${nearest}</div>` : ''}
+                ${locs.length ? `<div class="alert-coverage">Monitoring ${escapeHtml(locs.join(' · '))}</div>` : ''}
+                <div class="alert-desc">Updated ${escapeHtml(updated)}</div>
+            `;
+
+            card.addEventListener('click', () => {
+                const fireLat = Number(incident?.location?.lat);
+                const fireLon = Number(incident?.location?.lon);
+                if (radarMap && Number.isFinite(fireLat) && Number.isFinite(fireLon)) {
+                    radarMap.setView([fireLat, fireLon], Math.max(radarMap.getZoom(), 8));
+                }
+            });
+
+            container.appendChild(card);
+        });
+    };
+
     try {
         const container = document.getElementById('firewatch-container');
         const badge = document.getElementById('firewatch-count');
@@ -2317,41 +2357,7 @@ async function renderFireWatch(forceFetch = false) {
             container.appendChild(delayed);
         }
 
-        cache.firewatch.slice(0, 15).forEach((incident) => {
-            const card = document.createElement('div');
-            card.className = 'alert-card fire-card severe';
-
-            const locs = Array.isArray(incident?.monitored_locations) ? incident.monitored_locations : [];
-            const nearest = incident?.nearest_location ? `Nearest: ${escapeHtml(String(incident.nearest_location))}` : '';
-            const distance = Number.isFinite(Number(incident?.nearest_distance_miles))
-                ? `${Number(incident.nearest_distance_miles).toFixed(1)} mi`
-                : '--';
-            const updated = incident?.updated_at ? formatTime(incident.updated_at) : '--';
-            const stateCounty = [incident?.county, incident?.state].filter(Boolean).join(', ');
-
-            card.innerHTML = `
-                <div class="alert-event">${escapeHtml(String(incident?.name || 'Wildfire Incident'))}</div>
-                <div class="alert-meta">
-                    <span>${escapeHtml(formatFirewatchAcres(incident?.acres))}</span>
-                    <span>${escapeHtml(formatFirewatchContainment(incident?.containment_percent))}</span>
-                    <span>${escapeHtml(distance)}</span>
-                </div>
-                ${stateCounty ? `<div class="alert-coverage">${escapeHtml(stateCounty)}</div>` : ''}
-                ${nearest ? `<div class="alert-coverage">${nearest}</div>` : ''}
-                ${locs.length ? `<div class="alert-coverage">Monitoring ${escapeHtml(locs.join(' · '))}</div>` : ''}
-                <div class="alert-desc">Updated ${escapeHtml(updated)}</div>
-            `;
-
-            card.addEventListener('click', () => {
-                const fireLat = Number(incident?.location?.lat);
-                const fireLon = Number(incident?.location?.lon);
-                if (radarMap && Number.isFinite(fireLat) && Number.isFinite(fireLon)) {
-                    radarMap.setView([fireLat, fireLon], Math.max(radarMap.getZoom(), 8));
-                }
-            });
-
-            container.appendChild(card);
-        });
+        renderFirewatchCards(container, cache.firewatch);
     } catch (err) {
         // Firewatch is additive; keep the dashboard usable when upstream incident feeds fail.
         if (!Array.isArray(cache.firewatch)) {
@@ -2364,6 +2370,7 @@ async function renderFireWatch(forceFetch = false) {
             if (cache.firewatch.length > 0) {
                 // Keep previously-renderable data when fetch path fails.
                 container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing last cached incidents</div>';
+                renderFirewatchCards(container, cache.firewatch);
             } else {
                 container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing no incidents currently</div>';
             }
@@ -2998,6 +3005,15 @@ function applyOwmOverlay(layer) {
         radarMap.removeLayer(owmOverlayLayer);
         owmOverlayLayer = null;
     }
+
+    if (layer === 'fires') {
+        state.showFireOverlay = true;
+        const fireToggle = document.getElementById('fire-overlay-toggle');
+        if (fireToggle) fireToggle.checked = true;
+        scheduleViewportOverlayRefresh(true);
+        return;
+    }
+
     if (!layer || layer === 'none') return;
 
     if (!cache.config?.owm_available) {
