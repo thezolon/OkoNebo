@@ -48,6 +48,7 @@ const cache = {
     forecast: [],
     hourly: [],
     alerts: [],
+    alertsViewport: [],
     firewatch: [],
     owm: null,
     pws: null,
@@ -142,6 +143,7 @@ const runtime = {
     appBuild: '',
     owmOverlayWarned: false,
     firewatchFeedError: '',
+    viewportAlertsLoaded: false,
 };
 
 function renderRuntimeVersion() {
@@ -1020,8 +1022,23 @@ function getEffectiveAlerts() {
     return alerts;
 }
 
+function getDisplayAlerts() {
+    const baseAlerts = (runtime.viewportAlertsLoaded && Array.isArray(cache.alertsViewport))
+        ? [...cache.alertsViewport]
+        : [...(cache.alerts || [])];
+    const testAlert = getTestAlert();
+    if (testAlert) baseAlerts.unshift(testAlert);
+
+    if (!radarMap) return baseAlerts;
+    const bounds = radarMap.getBounds();
+    if (!bounds || !bounds.isValid()) return baseAlerts;
+    return baseAlerts.filter((alert) => _alertIntersectsViewport(alert, bounds));
+}
+
 function getAlertById(alertId) {
-    return getEffectiveAlerts().find((alert) => alert.id === alertId) || null;
+    return getDisplayAlerts().find((alert) => alert.id === alertId)
+        || getEffectiveAlerts().find((alert) => alert.id === alertId)
+        || null;
 }
 
 function updateAlertTestButton() {
@@ -1135,11 +1152,23 @@ function _alertIntersectsViewport(alert, mapBounds) {
 }
 
 function _effectiveAlertsInViewport() {
-    const alerts = getEffectiveAlerts();
-    if (!radarMap) return alerts;
+    return getDisplayAlerts();
+}
+
+async function refreshViewportAlerts(forceFetch = false) {
+    if (!radarMap) return;
     const bounds = radarMap.getBounds();
-    if (!bounds || !bounds.isValid()) return alerts;
-    return alerts.filter((alert) => _alertIntersectsViewport(alert, bounds));
+    if (!bounds || !bounds.isValid()) return;
+
+    const rounded = _roundedBounds(bounds);
+    const endpoint = `/alerts?min_lat=${rounded.min_lat}&min_lon=${rounded.min_lon}&max_lat=${rounded.max_lat}&max_lon=${rounded.max_lon}`;
+    try {
+        const payload = forceFetch ? await fetchAPI(endpoint) : await fetchAPIDeduped(endpoint);
+        cache.alertsViewport = Array.isArray(payload) ? payload : [];
+        runtime.viewportAlertsLoaded = true;
+    } catch (err) {
+        // Keep last viewport alerts snapshot if a refresh fails.
+    }
 }
 
 function updateAlertViewportCount() {
@@ -1221,7 +1250,8 @@ async function renderFireOverlay(forceFetch = false) {
 function scheduleViewportOverlayRefresh(forceFetch = false) {
     if (!radarMap) return;
     if (viewportOverlayTimer) clearTimeout(viewportOverlayTimer);
-    viewportOverlayTimer = setTimeout(() => {
+    viewportOverlayTimer = setTimeout(async () => {
+        await refreshViewportAlerts(forceFetch);
         updateAlertViewportCount();
         renderAlertPolygons();
         renderFireWatch(false).catch(() => {
@@ -1257,7 +1287,7 @@ function renderAlertPolygons() {
         }
     };
 
-    const features = getEffectiveAlerts()
+    const features = getDisplayAlerts()
         .filter((alert) => alert && alert.geometry && inViewport(alert.geometry))
         .map((alert) => ({
             type: 'Feature',
@@ -2285,6 +2315,16 @@ function resetRadarView() {
     }
 }
 
+async function returnHomeView() {
+    if (!radarMap || !cache.config) return;
+    fitMapToAlertCoverage();
+    await refreshViewportAlerts(true);
+    updateAlertViewportCount();
+    await renderAlerts(false);
+    await renderFireWatch(false);
+    scheduleViewportOverlayRefresh(true);
+}
+
 function updateAlertTicker(alerts) {
     const ticker = document.getElementById('alert-ticker');
     const tickerLabel = document.getElementById('ticker-label');
@@ -2470,7 +2510,7 @@ async function renderAlerts(forceFetch = false) {
 
     if (filtered.length === 0) {
         container.innerHTML = '<div class="no-alerts">No active alerts</div>';
-        updateAlertTicker(effectiveAlerts);
+        updateAlertTicker(getEffectiveAlerts());
         renderAlertPolygons();
         renderStormIndex();
         renderSourceAges();
@@ -2509,7 +2549,8 @@ async function renderAlerts(forceFetch = false) {
         container.appendChild(card);
     });
 
-    updateAlertTicker(effectiveAlerts);
+    // Keep home/work safety stream prioritized in ticker regardless of viewport.
+    updateAlertTicker(getEffectiveAlerts());
     renderAlertPolygons();
     renderFireOverlay(false).catch(() => {});
     renderStormIndex();
@@ -3243,6 +3284,11 @@ async function initRadar() {
     scheduleViewportOverlayRefresh(false);
     if (!radarMap.__viewportOverlayBound) {
         radarMap.on('moveend zoomend', () => {
+            // Viewport-scoped counts should update regardless of overlay selection.
+            updateAlertViewportCount();
+            renderFireWatch(false).catch(() => {
+                // Keep map interactions smooth if sidebar update fails.
+            });
             scheduleViewportOverlayRefresh(true);
         });
         radarMap.__viewportOverlayBound = true;
@@ -3933,6 +3979,10 @@ function setupControls() {
     document.getElementById('radar-step-forward-btn').addEventListener('click', () => {
         radarAnimating = false;
         moveRadarFrame(1);
+    });
+
+    document.getElementById('return-home-btn').addEventListener('click', async () => {
+        await returnHomeView();
     });
 
     document.getElementById('radar-reset-view-btn').addEventListener('click', () => {

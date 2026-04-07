@@ -2470,8 +2470,59 @@ async def api_tides(days: int = Query(default=2, ge=1, le=7)):
     ),
     tags=["Weather"],
 )
-async def api_alerts():
+async def api_alerts(
+    min_lat: float | None = Query(default=None, ge=-90, le=90),
+    min_lon: float | None = Query(default=None, ge=-180, le=180),
+    max_lat: float | None = Query(default=None, ge=-90, le=90),
+    max_lon: float | None = Query(default=None, ge=-180, le=180),
+):
     try:
+        has_bbox = all(v is not None for v in (min_lat, min_lon, max_lat, max_lon))
+        if has_bbox:
+            safe_min_lat = max(-90.0, min(90.0, float(min_lat)))
+            safe_max_lat = max(-90.0, min(90.0, float(max_lat)))
+            safe_min_lon = max(-180.0, min(180.0, float(min_lon)))
+            safe_max_lon = max(-180.0, min(180.0, float(max_lon)))
+            if safe_min_lat > safe_max_lat:
+                safe_min_lat, safe_max_lat = safe_max_lat, safe_min_lat
+            if safe_min_lon > safe_max_lon:
+                safe_min_lon, safe_max_lon = safe_max_lon, safe_min_lon
+
+            center_lat = (safe_min_lat + safe_max_lat) / 2.0
+            center_lon = (safe_min_lon + safe_max_lon) / 2.0
+            sample_points = [
+                (center_lat, center_lon, "Viewport Center"),
+                (safe_min_lat, safe_min_lon, "Viewport SW"),
+                (safe_min_lat, safe_max_lon, "Viewport SE"),
+                (safe_max_lat, safe_min_lon, "Viewport NW"),
+                (safe_max_lat, safe_max_lon, "Viewport NE"),
+            ]
+
+            point_alerts = await asyncio.gather(
+                *(wc.get_alerts(lat, lon, USER_AGENT) for lat, lon, _ in sample_points),
+                return_exceptions=True,
+            )
+
+            merged: dict[str, dict[str, Any]] = {}
+            for (_, _, label), alerts_for_point in zip(sample_points, point_alerts):
+                if isinstance(alerts_for_point, Exception):
+                    continue
+                for alert in alerts_for_point:
+                    alert_id = str(alert.get("id") or "").strip()
+                    if not alert_id:
+                        continue
+                    if alert_id not in merged:
+                        merged[alert_id] = {**alert, "monitored_locations": [label]}
+                    elif label not in merged[alert_id].get("monitored_locations", []):
+                        merged[alert_id]["monitored_locations"].append(label)
+
+            viewport_alerts = sorted(
+                merged.values(),
+                key=lambda alert: alert.get("effective") or alert.get("sent") or "",
+                reverse=True,
+            )
+            return viewport_alerts
+
         alerts = await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
         # Check for threat level transitions and fire webhooks
         alert_list = alerts.get("alerts", []) if isinstance(alerts, dict) else alerts
