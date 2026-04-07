@@ -8,6 +8,8 @@ OkoNebo is a self-hosted weather dashboard and local API for your location. It c
 
 This project is also a personal demonstration of AI-assisted software development — designed, built, and iterated on with [GitHub Copilot](https://github.com/features/copilot) as an active collaborator throughout the full development lifecycle.
 
+> **About this project**: OkoNebo is maintained by a solo developer as a passion project. I review and address issues regularly, but response times may vary. Contributions are welcomed and appreciated!
+
 ## Features
 
 - **Multi-provider fallback** - NWS -> WeatherAPI -> Tomorrow.io -> Visual Crossing -> Meteomatics; first successful response wins

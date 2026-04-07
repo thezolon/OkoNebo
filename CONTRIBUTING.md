@@ -2,6 +2,8 @@
 
 Thanks for your interest in contributing. OkoNebo is MIT-licensed and welcomes issues and pull requests.
 
+**Project status**: OkoNebo is a solo-maintained hobby project. Issues and PRs are reviewed regularly, though response times may vary depending on other commitments. If you're interested in contributing, please be patient and understand that this is not a full-time effort.
+
 ## Ground Rules
 
 - Be respectful and constructive.  See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
