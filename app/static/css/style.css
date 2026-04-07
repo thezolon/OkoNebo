@@ -344,6 +344,21 @@ html.admin-page body.admin-page {
     padding-right: 2px;
 }
 
+.alert-layer-filters {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 6px 0 2px;
+    font-size: 11px;
+    color: var(--t2);
+}
+
+.alert-layer-filters label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 /* Sidebar controls */
 .sidebar-controls {
     display: flex;

@@ -24,6 +24,11 @@ const state = {
     lastSyncTimestamp: null,
     offlineExtendedCacheTtlSec: 86400,
     showDebugPanel: false,
+    alertLayerFilters: {
+        tornado: true,
+        flood: true,
+        thunderstorm: true,
+    },
 };
 
 const PROVIDER_IDS = [
@@ -889,6 +894,20 @@ function alertBannerPriority(tone) {
     return 1;
 }
 
+function alertDisplaySubtype(alert) {
+    const text = `${alert?.event || ''} ${alert?.headline || ''}`.toLowerCase();
+    if (text.includes('tornado')) return 'tornado';
+    if (text.includes('flood')) return 'flood';
+    if (text.includes('thunderstorm')) return 'thunderstorm';
+    return 'other';
+}
+
+function passesAlertLayerFilters(alert) {
+    const subtype = alertDisplaySubtype(alert);
+    if (subtype === 'other') return true;
+    return !!state.alertLayerFilters[subtype];
+}
+
 function alertMapStyle(feature) {
     const tone = alertBannerTone(feature?.properties || {});
     const severity = alertSevClass(feature?.properties?.severity);
@@ -1030,10 +1049,11 @@ function getDisplayAlerts() {
     const testAlert = getTestAlert();
     if (testAlert) baseAlerts.unshift(testAlert);
 
-    if (!radarMap) return baseAlerts;
+    if (!radarMap) return baseAlerts.filter(passesAlertLayerFilters);
     const bounds = radarMap.getBounds();
-    if (!bounds || !bounds.isValid()) return baseAlerts;
-    return baseAlerts.filter((alert) => _alertIntersectsViewport(alert, bounds));
+    const filteredBySubtype = baseAlerts.filter(passesAlertLayerFilters);
+    if (!bounds || !bounds.isValid()) return filteredBySubtype;
+    return filteredBySubtype.filter((alert) => _alertIntersectsViewport(alert, bounds));
 }
 
 function getAlertById(alertId) {
@@ -3905,6 +3925,17 @@ function setupControls() {
     document.getElementById('alert-filter').addEventListener('change', (e) => {
         state.alertFilter = e.target.value;
         renderAlerts(false);
+    });
+
+    ['tornado', 'flood', 'thunderstorm'].forEach((key) => {
+        const el = document.getElementById(`alert-layer-${key}`);
+        if (!el) return;
+        el.addEventListener('change', () => {
+            state.alertLayerFilters[key] = el.checked;
+            renderAlerts(false);
+            updateAlertViewportCount();
+            renderAlertPolygons();
+        });
     });
 
     document.getElementById('alert-polygons-toggle').addEventListener('change', (e) => {
