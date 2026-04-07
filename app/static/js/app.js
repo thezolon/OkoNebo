@@ -141,6 +141,7 @@ const runtime = {
     appVersion: '--',
     appBuild: '',
     owmOverlayWarned: false,
+    firewatchFeedError: '',
 };
 
 function renderRuntimeVersion() {
@@ -2286,13 +2287,18 @@ async function renderFireWatch(forceFetch = false) {
                 payload = await fetchAPI('/firewatch?limit=60&radius_miles=500');
                 incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
             }
+            runtime.firewatchFeedError = String(payload?.error || '').trim();
             cache.firewatch = incidents;
         }
         container.innerHTML = '';
         badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
 
         if (!cache.firewatch.length) {
-            container.innerHTML = '<div class="no-alerts">No nearby wildfire incidents</div>';
+            if (runtime.firewatchFeedError) {
+                container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing no incidents currently</div>';
+            } else {
+                container.innerHTML = '<div class="no-alerts">No nearby wildfire incidents</div>';
+            }
             return;
         }
 
@@ -2334,9 +2340,10 @@ async function renderFireWatch(forceFetch = false) {
     } catch (err) {
         // Firewatch is additive; keep the dashboard usable when upstream incident feeds fail.
         cache.firewatch = [];
+        runtime.firewatchFeedError = String(err?.message || err || 'fetch failed');
         const container = document.getElementById('firewatch-container');
         const badge = document.getElementById('firewatch-count');
-        if (container) container.innerHTML = '<div class="no-alerts">Fire Watch temporarily unavailable</div>';
+        if (container) container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing no incidents currently</div>';
         if (badge) badge.textContent = '';
         return;
     }

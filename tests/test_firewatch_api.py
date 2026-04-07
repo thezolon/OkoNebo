@@ -39,13 +39,15 @@ class FireWatchApiTests(unittest.TestCase):
         self.assertEqual(len(data.get("incidents", [])), 1)
         self.assertEqual(data["incidents"][0].get("name"), "Sample Fire")
 
-    def test_firewatch_upstream_error_returns_502(self):
+    def test_firewatch_upstream_error_returns_graceful_payload(self):
         with patch("app.main.wc.get_fire_incidents_multi", side_effect=Exception("upstream failed")):
             response = self.client.get("/api/firewatch")
 
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertIn("detail", payload)
+        self.assertEqual(payload.get("source"), "nifc")
+        self.assertEqual(payload.get("incidents"), [])
+        self.assertIn("error", payload)
 
 
 if __name__ == "__main__":

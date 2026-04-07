@@ -2403,7 +2403,16 @@ async def api_firewatch(
             max_results=limit,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
+        LOGGER.warning(f"Firewatch fetch failed: {redact_text(str(exc))}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "source": "nifc",
+                "radius_miles": radius_miles,
+                "incidents": [],
+                "error": redact_text(str(exc)),
+            },
+        )
 
 
 @app.get(
