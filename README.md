@@ -26,6 +26,12 @@ This project is also a personal demonstration of AI-assisted software developmen
 - **Runtime version visibility** - dashboard and admin pages show the running app version/build
 - **CI pipeline** - compile checks, markdown link checks, unittest discovery, Bandit, Docker build + health + smoke on every push
 
+## Screenshot
+
+![OkoNebo Dashboard](docs/images/OkoNebo-ScreenCapture.png)
+
+*Main dashboard view showing current conditions, 7-day forecast, alerts, radar, and operational metrics*
+
 ## Quick Start
 
 If your clone predates runtime DB bind mounts, run one clean restart once:
