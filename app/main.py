@@ -464,6 +464,8 @@ _PUSH_SUBSCRIPTIONS_STORE_KEY = "push.subscriptions"
 _PUSH_VAPID_PUBLIC_STORE_KEY = "push.vapid.public"
 _PUSH_VAPID_PRIVATE_STORE_KEY = "push.vapid.private"
 _PUSH_DELIVERY_STATS: dict[str, int] = {"sent": 0, "failed": 0}
+_CACHE_WARM_TASK: asyncio.Task | None = None
+_CACHE_WARM_STOP: asyncio.Event | None = None
 
 # ---------------------------------------------------------------------------
 # App
@@ -489,8 +491,88 @@ app.add_middleware(
 )
 
 
+def _cache_warm_enabled() -> bool:
+    runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
+    runtime_cache = runtime_cfg.get("cache", {}) if isinstance(runtime_cfg.get("cache", {}), dict) else {}
+    env_default = _env_bool("CACHE_WARM_ENABLED", True)
+    return bool(runtime_cache.get("background_warm_enabled", env_default))
+
+
+def _cache_warm_interval_seconds() -> int:
+    runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
+    runtime_cache = runtime_cfg.get("cache", {}) if isinstance(runtime_cfg.get("cache", {}), dict) else {}
+    configured = runtime_cache.get("background_warm_interval_seconds", 120)
+    return max(30, min(int(configured), 900))
+
+
+async def _run_cache_warm_cycle() -> None:
+    if PROVIDERS.get("nws", {}).get("enabled"):
+        try:
+            await wc.get_current(LAT, LON, USER_AGENT)
+        except Exception as exc:
+            LOGGER.warning(f"Cache warm current failed: {redact_text(str(exc))}")
+
+        try:
+            await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
+        except Exception as exc:
+            LOGGER.warning(f"Cache warm alerts failed: {redact_text(str(exc))}")
+
+    try:
+        await wc.get_fire_incidents_multi(ALERT_LOCATIONS, radius_miles=250, max_results=60)
+    except Exception as exc:
+        LOGGER.warning(f"Cache warm firewatch failed: {redact_text(str(exc))}")
+
+    if PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY:
+        try:
+            await wc.get_owm_onecall(LAT, LON, OWM_KEY)
+        except Exception as exc:
+            LOGGER.warning(f"Cache warm openweather failed: {redact_text(str(exc))}")
+
+    if PROVIDERS.get("pws", {}).get("enabled") and PWS_KEY and PWS_STATIONS:
+        try:
+            await wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, PWS_KEY)
+        except Exception as exc:
+            LOGGER.warning(f"Cache warm pws failed: {redact_text(str(exc))}")
+
+
+async def _cache_warm_loop(stop_event: asyncio.Event) -> None:
+    interval_seconds = _cache_warm_interval_seconds()
+    # Warm once at startup so first visitor gets immediate data.
+    await _run_cache_warm_cycle()
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except asyncio.TimeoutError:
+            pass
+        if stop_event.is_set():
+            break
+        await _run_cache_warm_cycle()
+
+
+@app.on_event("startup")
+async def _startup_cache_warm_loop() -> None:
+    global _CACHE_WARM_TASK, _CACHE_WARM_STOP
+    if not _cache_warm_enabled():
+        return
+    if _CACHE_WARM_TASK and not _CACHE_WARM_TASK.done():
+        return
+    _CACHE_WARM_STOP = asyncio.Event()
+    _CACHE_WARM_TASK = asyncio.create_task(_cache_warm_loop(_CACHE_WARM_STOP))
+
+
 @app.on_event("shutdown")
 async def _shutdown_weather_http_clients() -> None:
+    global _CACHE_WARM_TASK, _CACHE_WARM_STOP
+    if _CACHE_WARM_STOP is not None:
+        _CACHE_WARM_STOP.set()
+    if _CACHE_WARM_TASK is not None:
+        try:
+            await _CACHE_WARM_TASK
+        except Exception:
+            pass
+        _CACHE_WARM_TASK = None
+    _CACHE_WARM_STOP = None
     await wc.close_http_clients()
 
 
