@@ -50,6 +50,7 @@ const cache = {
     alerts: [],
     alertsViewport: [],
     firewatch: [],
+    firewatchViewport: [],
     owm: null,
     pws: null,
     pwsTrend: null,
@@ -1205,6 +1206,7 @@ async function renderFireOverlay(forceFetch = false) {
         // Fallback to sidebar cache if bbox feed is temporarily sparse/delayed.
         incidents = Array.isArray(cache.firewatch) ? cache.firewatch : [];
     }
+    cache.firewatchViewport = incidents;
     if (!incidents.length) return;
 
     fireIncidentsLayer = L.layerGroup();
@@ -1245,6 +1247,9 @@ async function renderFireOverlay(forceFetch = false) {
     if (typeof fireIncidentsLayer.bringToFront === 'function') {
         fireIncidentsLayer.bringToFront();
     }
+
+    // Keep sidebar list/count aligned with currently viewed incidents.
+    renderFireWatch(false).catch(() => {});
 }
 
 function scheduleViewportOverlayRefresh(forceFetch = false) {
@@ -2446,10 +2451,13 @@ async function renderFireWatch(forceFetch = false) {
             }
         }
         container.innerHTML = '';
-        const visibleIncidents = incidentsInViewport(cache.firewatch);
+        const sourceIncidents = Array.isArray(cache.firewatchViewport) && cache.firewatchViewport.length
+            ? cache.firewatchViewport
+            : cache.firewatch;
+        const visibleIncidents = incidentsInViewport(sourceIncidents);
         badge.textContent = visibleIncidents.length ? String(visibleIncidents.length) : '';
 
-        if (!cache.firewatch.length) {
+        if (!sourceIncidents.length) {
             if (runtime.firewatchFeedError) {
                 container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing no incidents currently</div>';
             } else {
@@ -3126,6 +3134,11 @@ function applyOwmOverlay(layer) {
         if (fireToggle) fireToggle.checked = true;
         scheduleViewportOverlayRefresh(true);
         return;
+    }
+
+    if (fireIncidentsLayer) {
+        radarMap.removeLayer(fireIncidentsLayer);
+        fireIncidentsLayer = null;
     }
 
     if (!layer || layer === 'none') return;
@@ -3901,7 +3914,11 @@ function setupControls() {
 
     document.getElementById('fire-overlay-toggle').addEventListener('change', (e) => {
         state.showFireOverlay = e.target.checked;
-        scheduleViewportOverlayRefresh(false);
+        if (!state.showFireOverlay && fireIncidentsLayer && radarMap) {
+            radarMap.removeLayer(fireIncidentsLayer);
+            fireIncidentsLayer = null;
+        }
+        scheduleViewportOverlayRefresh(state.showFireOverlay);
     });
 
     document.getElementById('alert-test-toggle-btn').addEventListener('click', async () => {
