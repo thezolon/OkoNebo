@@ -1280,6 +1280,20 @@ function setElementVisible(el, visible) {
     el.style.display = visible ? '' : 'none';
 }
 
+function updateOwmOverlayOptions(owmAvailable) {
+    const select = document.getElementById('owm-overlay');
+    if (!select) return;
+    Array.from(select.options || []).forEach((opt) => {
+        const isNone = String(opt.value || '') === 'none';
+        opt.disabled = !isNone && !owmAvailable;
+        opt.hidden = !isNone && !owmAvailable;
+    });
+    if (!owmAvailable && state.owmOverlay !== 'none') {
+        state.owmOverlay = 'none';
+        select.value = 'none';
+    }
+}
+
 function signed(value, digits = 1) {
     if (value == null || Number.isNaN(value)) return '--';
     const n = Number(value);
@@ -2047,15 +2061,13 @@ async function renderHeader(forceFetch = false) {
 
     const owmSelect = document.getElementById('owm-overlay');
     if (owmSelect) {
-        setElementVisible(owmSelect, owmUiAvailable);
-        owmSelect.disabled = !owmUiAvailable;
+        // Keep selector visible so users can still choose "No Overlay" even when OWM is unavailable.
+        setElementVisible(owmSelect, true);
+        owmSelect.disabled = false;
         owmSelect.title = owmUiAvailable
             ? 'OpenWeather tile overlays'
             : '';
-        if (!owmUiAvailable && state.owmOverlay !== 'none') {
-            state.owmOverlay = 'none';
-            owmSelect.value = 'none';
-        }
+        updateOwmOverlayOptions(owmUiAvailable);
     }
 
     setElementVisible(document.getElementById('owm-dot'), owmUiAvailable);
@@ -2256,66 +2268,71 @@ function formatFirewatchContainment(percent) {
 }
 
 async function renderFireWatch(forceFetch = false) {
-    const container = document.getElementById('firewatch-container');
-    const badge = document.getElementById('firewatch-count');
-    if (!container || !badge) return;
-
     try {
+        const container = document.getElementById('firewatch-container');
+        const badge = document.getElementById('firewatch-count');
+        if (!container || !badge) return;
+
+        if (!Array.isArray(cache.firewatch)) {
+            cache.firewatch = [];
+        }
+
         if (forceFetch || cache.firewatch.length === 0) {
             const payload = await fetchAPIDeduped('/firewatch');
             cache.firewatch = Array.isArray(payload?.incidents) ? payload.incidents : [];
         }
+        container.innerHTML = '';
+        badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
+
+        if (!cache.firewatch.length) {
+            container.innerHTML = '<div class="no-alerts">No nearby wildfire incidents</div>';
+            return;
+        }
+
+        cache.firewatch.slice(0, 15).forEach((incident) => {
+            const card = document.createElement('div');
+            card.className = 'alert-card fire-card severe';
+
+            const locs = Array.isArray(incident?.monitored_locations) ? incident.monitored_locations : [];
+            const nearest = incident?.nearest_location ? `Nearest: ${escapeHtml(String(incident.nearest_location))}` : '';
+            const distance = Number.isFinite(Number(incident?.nearest_distance_miles))
+                ? `${Number(incident.nearest_distance_miles).toFixed(1)} mi`
+                : '--';
+            const updated = incident?.updated_at ? formatTime(incident.updated_at) : '--';
+            const stateCounty = [incident?.county, incident?.state].filter(Boolean).join(', ');
+
+            card.innerHTML = `
+                <div class="alert-event">${escapeHtml(String(incident?.name || 'Wildfire Incident'))}</div>
+                <div class="alert-meta">
+                    <span>${escapeHtml(formatFirewatchAcres(incident?.acres))}</span>
+                    <span>${escapeHtml(formatFirewatchContainment(incident?.containment_percent))}</span>
+                    <span>${escapeHtml(distance)}</span>
+                </div>
+                ${stateCounty ? `<div class="alert-coverage">${escapeHtml(stateCounty)}</div>` : ''}
+                ${nearest ? `<div class="alert-coverage">${nearest}</div>` : ''}
+                ${locs.length ? `<div class="alert-coverage">Monitoring ${escapeHtml(locs.join(' · '))}</div>` : ''}
+                <div class="alert-desc">Updated ${escapeHtml(updated)}</div>
+            `;
+
+            card.addEventListener('click', () => {
+                const fireLat = Number(incident?.location?.lat);
+                const fireLon = Number(incident?.location?.lon);
+                if (radarMap && Number.isFinite(fireLat) && Number.isFinite(fireLon)) {
+                    radarMap.setView([fireLat, fireLon], Math.max(radarMap.getZoom(), 8));
+                }
+            });
+
+            container.appendChild(card);
+        });
     } catch (err) {
         // Firewatch is additive; keep the dashboard usable when upstream incident feeds fail.
         cache.firewatch = [];
-        container.innerHTML = '<div class="no-alerts">Fire Watch temporarily unavailable</div>';
-        badge.textContent = '';
+        const container = document.getElementById('firewatch-container');
+        const badge = document.getElementById('firewatch-count');
+        if (container) container.innerHTML = '<div class="no-alerts">Fire Watch temporarily unavailable</div>';
+        if (badge) badge.textContent = '';
         return;
     }
-
-    container.innerHTML = '';
-    badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
-
-    if (!cache.firewatch.length) {
-        container.innerHTML = '<div class="no-alerts">No nearby wildfire incidents</div>';
-        return;
-    }
-
-    cache.firewatch.slice(0, 15).forEach((incident) => {
-        const card = document.createElement('div');
-        card.className = 'alert-card fire-card severe';
-
-        const locs = Array.isArray(incident?.monitored_locations) ? incident.monitored_locations : [];
-        const nearest = incident?.nearest_location ? `Nearest: ${escapeHtml(String(incident.nearest_location))}` : '';
-        const distance = Number.isFinite(Number(incident?.nearest_distance_miles))
-            ? `${Number(incident.nearest_distance_miles).toFixed(1)} mi`
-            : '--';
-        const updated = incident?.updated_at ? formatTime(incident.updated_at) : '--';
-        const stateCounty = [incident?.county, incident?.state].filter(Boolean).join(', ');
-
-        card.innerHTML = `
-            <div class="alert-event">${escapeHtml(String(incident?.name || 'Wildfire Incident'))}</div>
-            <div class="alert-meta">
-                <span>${escapeHtml(formatFirewatchAcres(incident?.acres))}</span>
-                <span>${escapeHtml(formatFirewatchContainment(incident?.containment_percent))}</span>
-                <span>${escapeHtml(distance)}</span>
-            </div>
-            ${stateCounty ? `<div class="alert-coverage">${escapeHtml(stateCounty)}</div>` : ''}
-            ${nearest ? `<div class="alert-coverage">${nearest}</div>` : ''}
-            ${locs.length ? `<div class="alert-coverage">Monitoring ${escapeHtml(locs.join(' · '))}</div>` : ''}
-            <div class="alert-desc">Updated ${escapeHtml(updated)}</div>
-        `;
-
-        card.addEventListener('click', () => {
-            const fireLat = Number(incident?.location?.lat);
-            const fireLon = Number(incident?.location?.lon);
-            if (radarMap && Number.isFinite(fireLat) && Number.isFinite(fireLon)) {
-                radarMap.setView([fireLat, fireLon], Math.max(radarMap.getZoom(), 8));
-            }
-        });
-
-        container.appendChild(card);
-    });
 }
 
 async function renderAlerts(forceFetch = false) {
@@ -3155,7 +3172,9 @@ async function loadStormMode(forceFetch = false) {
     setSourceDot('owm-dot', owmUsable ? 'ok' : 'warn');
     setSourceDot('pws-dot', cache.pws?.stations?.length ? 'ok' : 'warn');
 
-    if (failures.length === 0) {
+    const blockingFailures = failures.filter((name) => name !== 'firewatch');
+
+    if (blockingFailures.length === 0) {
         clearError();
         setStatus('Storm mode live', 'ok');
         pushTimelineEvent('refresh', 'Storm mode refresh', 'Critical feeds refreshed successfully');
@@ -3163,9 +3182,9 @@ async function loadStormMode(forceFetch = false) {
         // Persist latest good data for offline recovery.
         persistRuntimeCache();
     } else {
-        showError(`Storm mode partial failure: ${failures.join(', ')}`);
+        showError(`Storm mode partial failure: ${blockingFailures.join(', ')}`);
         setStatus('Storm mode partial', 'warn');
-        pushTimelineEvent('refresh', 'Storm mode partial', `Issues: ${failures.join(', ')}`);
+        pushTimelineEvent('refresh', 'Storm mode partial', `Issues: ${blockingFailures.join(', ')}`);
     }
 
     // Keep status controls in sync with online/offline state.
@@ -3870,7 +3889,9 @@ async function loadAll(forceFetch = false) {
     setSourceDot('pws-dot', cache.pws?.stations?.length ? 'ok' : 'warn');
     renderStormIndex();
 
-    if (failures.length === 0) {
+    const blockingFailures = failures.filter((name) => name !== 'firewatch');
+
+    if (blockingFailures.length === 0) {
         clearError();
         if (activeHealth.level === 'stale') {
             const age = Math.round(activeHealth.ageMin || 0);
@@ -3886,9 +3907,9 @@ async function loadAll(forceFetch = false) {
         // Persist latest good data for offline recovery.
         persistRuntimeCache();
     } else {
-        showError(`Some sections failed: ${failures.join(', ')}`);
+        showError(`Some sections failed: ${blockingFailures.join(', ')}`);
         setStatus('Partial', 'warn');
-        pushTimelineEvent('refresh', 'Partial refresh', `Issues: ${failures.join(', ')}`);
+        pushTimelineEvent('refresh', 'Partial refresh', `Issues: ${blockingFailures.join(', ')}`);
     }
 
     // Keep status controls in sync with online/offline state.
