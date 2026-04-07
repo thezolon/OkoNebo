@@ -2277,6 +2277,7 @@ async function renderFireWatch(forceFetch = false) {
         if (!Array.isArray(cache.firewatch)) {
             cache.firewatch = [];
         }
+        const previousIncidents = Array.isArray(cache.firewatch) ? cache.firewatch.slice() : [];
 
         if (forceFetch || cache.firewatch.length === 0) {
             // Keep sidebar payload bounded to avoid client timeout on large incident sets.
@@ -2288,7 +2289,14 @@ async function renderFireWatch(forceFetch = false) {
                 incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
             }
             runtime.firewatchFeedError = String(payload?.error || '').trim();
-            cache.firewatch = incidents;
+            if (incidents.length > 0) {
+                cache.firewatch = incidents;
+            } else if (runtime.firewatchFeedError && previousIncidents.length > 0) {
+                // Preserve the last known good incident list during transient feed delays.
+                cache.firewatch = previousIncidents;
+            } else {
+                cache.firewatch = incidents;
+            }
         }
         container.innerHTML = '';
         badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
@@ -2300,6 +2308,13 @@ async function renderFireWatch(forceFetch = false) {
                 container.innerHTML = '<div class="no-alerts">No nearby wildfire incidents</div>';
             }
             return;
+        }
+
+        if (runtime.firewatchFeedError) {
+            const delayed = document.createElement('div');
+            delayed.className = 'no-alerts';
+            delayed.textContent = 'Fire Watch live feed delayed - showing last cached incidents';
+            container.appendChild(delayed);
         }
 
         cache.firewatch.slice(0, 15).forEach((incident) => {
@@ -2339,12 +2354,21 @@ async function renderFireWatch(forceFetch = false) {
         });
     } catch (err) {
         // Firewatch is additive; keep the dashboard usable when upstream incident feeds fail.
-        cache.firewatch = [];
+        if (!Array.isArray(cache.firewatch)) {
+            cache.firewatch = [];
+        }
         runtime.firewatchFeedError = String(err?.message || err || 'fetch failed');
         const container = document.getElementById('firewatch-container');
         const badge = document.getElementById('firewatch-count');
-        if (container) container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing no incidents currently</div>';
-        if (badge) badge.textContent = '';
+        if (container) {
+            if (cache.firewatch.length > 0) {
+                // Keep previously-renderable data when fetch path fails.
+                container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing last cached incidents</div>';
+            } else {
+                container.innerHTML = '<div class="no-alerts">Fire Watch live feed delayed - showing no incidents currently</div>';
+            }
+        }
+        if (badge) badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
         return;
     }
 }
