@@ -2278,8 +2278,15 @@ async function renderFireWatch(forceFetch = false) {
         }
 
         if (forceFetch || cache.firewatch.length === 0) {
-            const payload = await fetchAPIDeduped('/firewatch');
-            cache.firewatch = Array.isArray(payload?.incidents) ? payload.incidents : [];
+            // Keep sidebar payload bounded to avoid client timeout on large incident sets.
+            let payload = await fetchAPIDeduped('/firewatch?limit=60');
+            let incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
+            if (!incidents.length) {
+                // One retry with slightly broader radius for sparse local data.
+                payload = await fetchAPI('/firewatch?limit=60&radius_miles=500');
+                incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
+            }
+            cache.firewatch = incidents;
         }
         container.innerHTML = '';
         badge.textContent = cache.firewatch.length ? String(cache.firewatch.length) : '';
