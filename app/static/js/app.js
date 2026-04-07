@@ -113,7 +113,7 @@ let viewportOverlayTimer = null;
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=4').catch(() => {
+        navigator.serviceWorker.register('/sw.js?v=5').catch(() => {
             // Ignore service worker registration failures in unsupported contexts.
         });
     });
