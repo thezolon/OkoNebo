@@ -1099,18 +1099,44 @@ function _roundedBounds(bounds) {
 function _fireMarkerStyle(acres) {
     const n = Number(acres);
     if (!Number.isFinite(n) || n <= 0) {
-        return { radius: 6, color: '#f0b429', fillColor: '#f8d26a', fillOpacity: 0.75, weight: 1.5 };
+        return { radius: 8, color: '#7f1d1d', fillColor: '#ef4444', fillOpacity: 0.86, weight: 1.8 };
     }
     if (n >= 10000) {
-        return { radius: 12, color: '#9b1c1c', fillColor: '#ef4444', fillOpacity: 0.82, weight: 2 };
+        return { radius: 14, color: '#7f1d1d', fillColor: '#dc2626', fillOpacity: 0.9, weight: 2.2 };
     }
     if (n >= 1000) {
-        return { radius: 10, color: '#c2410c', fillColor: '#fb923c', fillOpacity: 0.8, weight: 2 };
+        return { radius: 12, color: '#9a3412', fillColor: '#f97316', fillOpacity: 0.88, weight: 2 };
     }
     if (n >= 100) {
-        return { radius: 8, color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.78, weight: 1.8 };
+        return { radius: 10, color: '#92400e', fillColor: '#f59e0b', fillOpacity: 0.86, weight: 1.8 };
     }
-    return { radius: 6, color: '#f59e0b', fillColor: '#fde047', fillOpacity: 0.76, weight: 1.5 };
+    return { radius: 8, color: '#7f1d1d', fillColor: '#f97316', fillOpacity: 0.84, weight: 1.7 };
+}
+
+function _alertIntersectsViewport(alert, mapBounds) {
+    if (!alert || !mapBounds || !mapBounds.isValid()) return false;
+    if (!alert.geometry) return true;
+    try {
+        const bounds = L.geoJSON({ type: 'Feature', geometry: alert.geometry }).getBounds();
+        return bounds.isValid() && mapBounds.intersects(bounds);
+    } catch (err) {
+        return false;
+    }
+}
+
+function _effectiveAlertsInViewport() {
+    const alerts = getEffectiveAlerts();
+    if (!radarMap) return alerts;
+    const bounds = radarMap.getBounds();
+    if (!bounds || !bounds.isValid()) return alerts;
+    return alerts.filter((alert) => _alertIntersectsViewport(alert, bounds));
+}
+
+function updateAlertViewportCount() {
+    const badge = document.getElementById('alert-count');
+    if (!badge) return;
+    const alerts = _effectiveAlertsInViewport();
+    badge.textContent = alerts.length ? String(alerts.length) : '';
 }
 
 async function renderFireOverlay(forceFetch = false) {
@@ -1135,7 +1161,11 @@ async function renderFireOverlay(forceFetch = false) {
     } else {
         payload = await fetchAPIDeduped(endpoint);
     }
-    const incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
+    let incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
+    if (!incidents.length) {
+        // Fallback to sidebar cache if bbox feed is temporarily sparse/delayed.
+        incidents = Array.isArray(cache.firewatch) ? cache.firewatch : [];
+    }
     if (!incidents.length) return;
 
     fireIncidentsLayer = L.layerGroup();
@@ -1172,6 +1202,7 @@ function scheduleViewportOverlayRefresh(forceFetch = false) {
     if (!radarMap) return;
     if (viewportOverlayTimer) clearTimeout(viewportOverlayTimer);
     viewportOverlayTimer = setTimeout(() => {
+        updateAlertViewportCount();
         renderAlertPolygons();
         renderFireOverlay(forceFetch).catch(() => {
             // Keep map responsive even if fire overlay fetch fails.
@@ -1181,6 +1212,8 @@ function scheduleViewportOverlayRefresh(forceFetch = false) {
 
 function renderAlertPolygons() {
     if (!radarMap) return;
+
+    updateAlertViewportCount();
 
     if (alertPolygonsLayer) {
         radarMap.removeLayer(alertPolygonsLayer);
@@ -2386,7 +2419,7 @@ async function renderAlerts(forceFetch = false) {
     const container = document.getElementById('alerts-container');
     container.innerHTML = '';
 
-    const effectiveAlerts = getEffectiveAlerts();
+    const effectiveAlerts = _effectiveAlertsInViewport();
 
     const filtered = effectiveAlerts.filter((a) => {
         if (state.alertFilter === 'all') return true;
