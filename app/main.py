@@ -118,7 +118,7 @@ PROVIDER_KEY_ENV = {
 }
 
 AGENT_SCOPE_DEFINITIONS: dict[str, str] = {
-    "weather.read": "Read weather observations, forecasts, alerts, METAR, tides, AQI, and PWS feeds",
+    "weather.read": "Read weather observations, forecasts, alerts, fire incidents, METAR, tides, AQI, and PWS feeds",
     "config.read": "Read bootstrap/config metadata",
     "stats.read": "Read upstream provider call counters",
     "debug.read": "Read debug telemetry payload",
@@ -133,6 +133,7 @@ AGENT_SCOPE_BY_PATH: dict[str, str] = {
     "/api/forecast": "weather.read",
     "/api/hourly": "weather.read",
     "/api/alerts": "weather.read",
+    "/api/firewatch": "weather.read",
     "/api/metar": "weather.read",
     "/api/tides": "weather.read",
     "/api/aqi": "weather.read",
@@ -463,6 +464,8 @@ _PUSH_SUBSCRIPTIONS_STORE_KEY = "push.subscriptions"
 _PUSH_VAPID_PUBLIC_STORE_KEY = "push.vapid.public"
 _PUSH_VAPID_PRIVATE_STORE_KEY = "push.vapid.private"
 _PUSH_DELIVERY_STATS: dict[str, int] = {"sent": 0, "failed": 0}
+_CACHE_WARM_TASK: asyncio.Task | None = None
+_CACHE_WARM_STOP: asyncio.Event | None = None
 
 # ---------------------------------------------------------------------------
 # App
@@ -488,8 +491,118 @@ app.add_middleware(
 )
 
 
+def _cache_warm_enabled() -> bool:
+    runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
+    runtime_cache = runtime_cfg.get("cache", {}) if isinstance(runtime_cfg.get("cache", {}), dict) else {}
+    env_default = _env_bool("CACHE_WARM_ENABLED", True)
+    return bool(runtime_cache.get("background_warm_enabled", env_default))
+
+
+def _cache_warm_interval_seconds() -> int:
+    runtime_cfg = SECURE_STORE.get_json("settings.runtime", default={}) or {}
+    runtime_cache = runtime_cfg.get("cache", {}) if isinstance(runtime_cfg.get("cache", {}), dict) else {}
+    configured = runtime_cache.get("background_warm_interval_seconds", 120)
+    return max(30, min(int(configured), 900))
+
+
+async def _run_cache_warm_cycle() -> None:
+    async def _warm(label: str, producer: Callable[[], Awaitable[Any]]) -> None:
+        try:
+            await producer()
+        except Exception as exc:
+            LOGGER.warning(f"Cache warm {label} failed: {redact_text(str(exc))}")
+
+    if PROVIDERS.get("nws", {}).get("enabled"):
+        await _warm("nws-current", lambda: wc.get_current(LAT, LON, USER_AGENT))
+        await _warm("nws-forecast", lambda: wc.get_forecast(LAT, LON, USER_AGENT))
+        await _warm("nws-hourly", lambda: wc.get_hourly(LAT, LON, USER_AGENT))
+        await _warm("nws-alerts", lambda: wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT))
+
+    # Fire watch is keyless and should stay warm regardless of viewer activity.
+    await _warm("firewatch", lambda: wc.get_fire_incidents_multi(ALERT_LOCATIONS, radius_miles=250, max_results=60))
+
+    if PROVIDERS.get("openweather", {}).get("enabled") and OWM_KEY:
+        await _warm("openweather-onecall", lambda: wc.get_owm_onecall(LAT, LON, OWM_KEY))
+        await _warm("openweather-aqi", lambda: wc.get_owm_aqi(LAT, LON, OWM_KEY))
+
+    # AQI keyless fallback keeps the AQI panel warm even when OWM key is absent.
+    await _warm("openmeteo-aqi", lambda: wc.get_openmeteo_aqi(LAT, LON))
+
+    if PROVIDERS.get("pws", {}).get("enabled") and PWS_KEY and PWS_STATIONS:
+        await _warm("pws-current", lambda: wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, PWS_KEY))
+        await _warm("pws-trend", lambda: wc.get_pws_trend(PWS_PROVIDER, PWS_STATIONS, PWS_KEY, hours=3))
+
+    if PROVIDERS.get("weatherapi", {}).get("enabled"):
+        weatherapi_key = _provider_api_key("weatherapi")
+        if weatherapi_key:
+            await _warm("weatherapi-current", lambda: wc.get_weatherapi_current(LAT, LON, weatherapi_key))
+            await _warm("weatherapi-forecast", lambda: wc.get_weatherapi_forecast(LAT, LON, weatherapi_key))
+            await _warm("weatherapi-hourly", lambda: wc.get_weatherapi_hourly(LAT, LON, weatherapi_key))
+
+    if PROVIDERS.get("tomorrow", {}).get("enabled"):
+        tomorrow_key = _provider_api_key("tomorrow")
+        if tomorrow_key:
+            await _warm("tomorrow-current", lambda: wc.get_tomorrow_current(LAT, LON, tomorrow_key))
+            await _warm("tomorrow-forecast", lambda: wc.get_tomorrow_forecast(LAT, LON, tomorrow_key))
+            await _warm("tomorrow-hourly", lambda: wc.get_tomorrow_hourly(LAT, LON, tomorrow_key))
+
+    if PROVIDERS.get("visualcrossing", {}).get("enabled"):
+        visualcrossing_key = _provider_api_key("visualcrossing")
+        if visualcrossing_key:
+            await _warm("visualcrossing-current", lambda: wc.get_visualcrossing_current(LAT, LON, visualcrossing_key))
+            await _warm("visualcrossing-forecast", lambda: wc.get_visualcrossing_forecast(LAT, LON, visualcrossing_key))
+            await _warm("visualcrossing-hourly", lambda: wc.get_visualcrossing_hourly(LAT, LON, visualcrossing_key))
+
+    if PROVIDERS.get("meteomatics", {}).get("enabled"):
+        meteomatics_key = _provider_api_key("meteomatics")
+        if meteomatics_key and ":" in meteomatics_key:
+            await _warm("meteomatics-current", lambda: wc.get_meteomatics_current(LAT, LON, meteomatics_key))
+
+    if PROVIDERS.get("aviationweather", {}).get("enabled"):
+        await _warm("aviationweather-metar", lambda: wc.get_aviationweather_metar(LAT, LON, USER_AGENT))
+
+    if PROVIDERS.get("noaa_tides", {}).get("enabled"):
+        await _warm("noaa-tides", lambda: wc.get_noaa_tides(LAT, LON, days=2))
+
+
+async def _cache_warm_loop(stop_event: asyncio.Event) -> None:
+    interval_seconds = _cache_warm_interval_seconds()
+    # Warm once at startup so first visitor gets immediate data.
+    await _run_cache_warm_cycle()
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except asyncio.TimeoutError:
+            pass
+        if stop_event.is_set():
+            break
+        await _run_cache_warm_cycle()
+
+
+@app.on_event("startup")
+async def _startup_cache_warm_loop() -> None:
+    global _CACHE_WARM_TASK, _CACHE_WARM_STOP
+    if not _cache_warm_enabled():
+        return
+    if _CACHE_WARM_TASK and not _CACHE_WARM_TASK.done():
+        return
+    _CACHE_WARM_STOP = asyncio.Event()
+    _CACHE_WARM_TASK = asyncio.create_task(_cache_warm_loop(_CACHE_WARM_STOP))
+
+
 @app.on_event("shutdown")
 async def _shutdown_weather_http_clients() -> None:
+    global _CACHE_WARM_TASK, _CACHE_WARM_STOP
+    if _CACHE_WARM_STOP is not None:
+        _CACHE_WARM_STOP.set()
+    if _CACHE_WARM_TASK is not None:
+        try:
+            await _CACHE_WARM_TASK
+        except Exception:
+            pass
+        _CACHE_WARM_TASK = None
+    _CACHE_WARM_STOP = None
     await wc.close_http_clients()
 
 
@@ -1575,6 +1688,7 @@ async def api_capabilities():
             {"name": "get_forecast", "endpoint": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "endpoint": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "endpoint": "/api/alerts", "scope": "weather.read"},
+            {"name": "get_firewatch", "endpoint": "/api/firewatch", "scope": "weather.read"},
             {"name": "get_metar", "endpoint": "/api/metar", "scope": "weather.read"},
             {"name": "get_tides", "endpoint": "/api/tides", "scope": "weather.read"},
             {"name": "get_pws", "endpoint": "/api/pws", "scope": "weather.read"},
@@ -1624,6 +1738,7 @@ async def api_agent_profile(request: Request):
             {"name": "get_forecast", "method": "GET", "path": "/api/forecast", "scope": "weather.read"},
             {"name": "get_hourly", "method": "GET", "path": "/api/hourly", "scope": "weather.read"},
             {"name": "get_alerts", "method": "GET", "path": "/api/alerts", "scope": "weather.read"},
+            {"name": "get_firewatch", "method": "GET", "path": "/api/firewatch", "scope": "weather.read"},
             {"name": "get_metar", "method": "GET", "path": "/api/metar", "scope": "weather.read"},
             {"name": "get_tides", "method": "GET", "path": "/api/tides", "scope": "weather.read"},
             {"name": "get_pws", "method": "GET", "path": "/api/pws", "scope": "weather.read"},
@@ -1672,6 +1787,7 @@ async def api_agent_instructions_txt():
         "- get_forecast -> GET /api/forecast",
         "- get_hourly -> GET /api/hourly",
         "- get_alerts -> GET /api/alerts",
+        "- get_firewatch -> GET /api/firewatch",
         "- get_metar -> GET /api/metar",
         "- get_tides -> GET /api/tides?days=2",
         "- get_stats -> GET /api/stats",
@@ -2354,8 +2470,59 @@ async def api_tides(days: int = Query(default=2, ge=1, le=7)):
     ),
     tags=["Weather"],
 )
-async def api_alerts():
+async def api_alerts(
+    min_lat: float | None = Query(default=None, ge=-90, le=90),
+    min_lon: float | None = Query(default=None, ge=-180, le=180),
+    max_lat: float | None = Query(default=None, ge=-90, le=90),
+    max_lon: float | None = Query(default=None, ge=-180, le=180),
+):
     try:
+        has_bbox = all(v is not None for v in (min_lat, min_lon, max_lat, max_lon))
+        if has_bbox:
+            safe_min_lat = max(-90.0, min(90.0, float(min_lat)))
+            safe_max_lat = max(-90.0, min(90.0, float(max_lat)))
+            safe_min_lon = max(-180.0, min(180.0, float(min_lon)))
+            safe_max_lon = max(-180.0, min(180.0, float(max_lon)))
+            if safe_min_lat > safe_max_lat:
+                safe_min_lat, safe_max_lat = safe_max_lat, safe_min_lat
+            if safe_min_lon > safe_max_lon:
+                safe_min_lon, safe_max_lon = safe_max_lon, safe_min_lon
+
+            center_lat = (safe_min_lat + safe_max_lat) / 2.0
+            center_lon = (safe_min_lon + safe_max_lon) / 2.0
+            sample_points = [
+                (center_lat, center_lon, "Viewport Center"),
+                (safe_min_lat, safe_min_lon, "Viewport SW"),
+                (safe_min_lat, safe_max_lon, "Viewport SE"),
+                (safe_max_lat, safe_min_lon, "Viewport NW"),
+                (safe_max_lat, safe_max_lon, "Viewport NE"),
+            ]
+
+            point_alerts = await asyncio.gather(
+                *(wc.get_alerts(lat, lon, USER_AGENT) for lat, lon, _ in sample_points),
+                return_exceptions=True,
+            )
+
+            merged: dict[str, dict[str, Any]] = {}
+            for (_, _, label), alerts_for_point in zip(sample_points, point_alerts):
+                if isinstance(alerts_for_point, Exception):
+                    continue
+                for alert in alerts_for_point:
+                    alert_id = str(alert.get("id") or "").strip()
+                    if not alert_id:
+                        continue
+                    if alert_id not in merged:
+                        merged[alert_id] = {**alert, "monitored_locations": [label]}
+                    elif label not in merged[alert_id].get("monitored_locations", []):
+                        merged[alert_id]["monitored_locations"].append(label)
+
+            viewport_alerts = sorted(
+                merged.values(),
+                key=lambda alert: alert.get("effective") or alert.get("sent") or "",
+                reverse=True,
+            )
+            return viewport_alerts
+
         alerts = await wc.get_alerts_multi(ALERT_LOCATIONS, USER_AGENT)
         # Check for threat level transitions and fire webhooks
         alert_list = alerts.get("alerts", []) if isinstance(alerts, dict) else alerts
@@ -2363,6 +2530,52 @@ async def api_alerts():
         return alerts
     except Exception as exc:
         raise HTTPException(status_code=502, detail=redact_text(str(exc))) from exc
+
+
+@app.get(
+    "/api/firewatch",
+    summary="Nearby active wildfire incidents",
+    description=(
+        "Keyless wildfire incident feed around monitored home/work points using "
+        "NIFC WFIGS incident locations. Returns de-duplicated incidents with "
+        "distance, acres, containment, and nearest monitored location. Cached 5 minutes."
+    ),
+    tags=["Weather"],
+)
+async def api_firewatch(
+    radius_miles: int = Query(default=250, ge=25, le=500),
+    limit: int = Query(default=30, ge=1, le=500),
+    min_lat: float | None = Query(default=None, ge=-90, le=90),
+    min_lon: float | None = Query(default=None, ge=-180, le=180),
+    max_lat: float | None = Query(default=None, ge=-90, le=90),
+    max_lon: float | None = Query(default=None, ge=-180, le=180),
+):
+    try:
+        has_bbox = all(v is not None for v in (min_lat, min_lon, max_lat, max_lon))
+        if has_bbox:
+            return await wc.get_fire_incidents_bbox(
+                float(min_lat),
+                float(min_lon),
+                float(max_lat),
+                float(max_lon),
+                max_results=min(limit, 500),
+            )
+        return await wc.get_fire_incidents_multi(
+            ALERT_LOCATIONS,
+            radius_miles=radius_miles,
+            max_results=limit,
+        )
+    except Exception as exc:
+        LOGGER.warning(f"Firewatch fetch failed: {redact_text(str(exc))}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "source": "nifc",
+                "radius_miles": radius_miles,
+                "incidents": [],
+                "error": redact_text(str(exc)),
+            },
+        )
 
 
 @app.get(

@@ -4,6 +4,7 @@ Uses in-memory cache for speed + SQLite for persistence across restarts with ada
 """
 
 import asyncio
+import math
 import random
 import time
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ _UPSTREAM_CALL_STATS: dict[str, int] = {
     "meteomatics": 0,
     "aviationweather": 0,
     "noaa_tides": 0,
+    "nifc_fire": 0,
     "pws_current": 0,
     "pws_history": 0,
 }
@@ -52,6 +54,7 @@ PROVIDER_PULL_CYCLE_DEFAULTS: dict[str, int] = {
     "visualcrossing": 300,
     "aviationweather": 600,
     "noaa_tides": 1800,
+    "nifc_fire": 300,
 }
 
 PROVIDER_PULL_CYCLE_BOUNDS: dict[str, int] = {
@@ -69,6 +72,7 @@ PROVIDER_PULL_CYCLE_CACHE_TYPES: dict[str, list[str]] = {
     "visualcrossing": ["current_visualcrossing", "forecast_visualcrossing", "hourly_visualcrossing"],
     "aviationweather": ["current_aviationweather"],
     "noaa_tides": ["tides_noaa"],
+    "nifc_fire": ["fires_nifc"],
 }
 
 _ACTIVE_PROVIDER_PULL_CYCLES = dict(PROVIDER_PULL_CYCLE_DEFAULTS)
@@ -642,6 +646,10 @@ async def get_alerts_multi(locations: list[dict], user_agent: str) -> list[dict]
 OWM_BASE = "https://api.openweathermap.org/data/3.0"
 OWM_AQI_BASE = "https://api.openweathermap.org/data/2.5"
 OPENMETEO_AQI_BASE = "https://air-quality-api.open-meteo.com/v1/air-quality"
+NIFC_INCIDENTS_URL = (
+    "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/"
+    "WFIGS_Incident_Locations_Current/FeatureServer/0/query"
+)
 PWS_BASE = "https://api.weather.com/v2/pws/observations/current"
 PWS_HISTORY_BASE = "https://api.weather.com/v2/pws/observations/all/1day"
 WEATHERAPI_BASE = "https://api.weatherapi.com/v1"
@@ -674,6 +682,321 @@ _TOMORROW_CODE_TEXT = {
     7102: "Light Ice Pellets",
     8000: "Thunderstorm",
 }
+
+
+def _to_iso_utc_from_millis(value: Any) -> str | None:
+    try:
+        if value is None:
+            return None
+        millis = float(value)
+        if millis <= 0:
+            return None
+        return datetime.fromtimestamp(millis / 1000.0, tz=timezone.utc).isoformat()
+    except Exception:
+        return None
+
+
+def _to_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_miles = 3958.8
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
+
+    delta_lat = lat2_rad - lat1_rad
+    delta_lon = lon2_rad - lon1_rad
+    a = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return radius_miles * c
+
+
+async def get_fire_incidents(
+    lat: float,
+    lon: float,
+    radius_miles: int = 250,
+    max_results: int = 30,
+) -> list[dict[str, Any]]:
+    safe_radius = max(25, min(int(radius_miles), 500))
+    safe_limit = max(1, min(int(max_results), 100))
+    key = f"firewatch:{lat},{lon}:r{safe_radius}:n{safe_limit}"
+
+    async def _producer() -> list[dict[str, Any]]:
+        raw = await _http_get_with_retry(
+            url=NIFC_INCIDENTS_URL,
+            upstream_name="nifc_fire",
+            client_key="nifc_fire",
+            retries=3,
+            params={
+                "where": "IncidentTypeCategory='WF'",
+                "outFields": (
+                    "OBJECTID,IrwinID,UniqueFireIdentifier,IncidentName,IncidentShortDescription,"
+                    "IncidentTypeCategory,IncidentTypeKind,PercentContained,IncidentSize,DiscoveryAcres,"
+                    "POOState,POOCounty,FireDiscoveryDateTime,ModifiedOnDateTime_dt"
+                ),
+                "returnGeometry": "true",
+                "geometry": f"{lon},{lat}",
+                "geometryType": "esriGeometryPoint",
+                "inSR": "4326",
+                "distance": str(safe_radius),
+                "units": "esriSRUnit_StatuteMile",
+                "orderByFields": "ModifiedOnDateTime_dt DESC",
+                "resultRecordCount": str(safe_limit),
+                "f": "json",
+            },
+        )
+
+        incidents: list[dict[str, Any]] = []
+        for feature in raw.get("features", []) or []:
+            attrs = feature.get("attributes") if isinstance(feature, dict) else {}
+            geom = feature.get("geometry") if isinstance(feature, dict) else {}
+            attrs = attrs if isinstance(attrs, dict) else {}
+            geom = geom if isinstance(geom, dict) else {}
+
+            point_lon = _to_float(geom.get("x"))
+            point_lat = _to_float(geom.get("y"))
+            if point_lat is None or point_lon is None:
+                continue
+
+            incident_id = str(
+                attrs.get("IrwinID")
+                or attrs.get("UniqueFireIdentifier")
+                or attrs.get("OBJECTID")
+                or ""
+            ).strip()
+            if not incident_id:
+                continue
+
+            acres = _to_float(attrs.get("IncidentSize"))
+            if acres is None:
+                acres = _to_float(attrs.get("DiscoveryAcres"))
+
+            incidents.append(
+                {
+                    "id": incident_id,
+                    "name": str(attrs.get("IncidentName") or "Unnamed wildfire").strip(),
+                    "description": str(attrs.get("IncidentShortDescription") or "").strip() or None,
+                    "incident_type": str(attrs.get("IncidentTypeCategory") or "WF").strip() or "WF",
+                    "incident_kind": str(attrs.get("IncidentTypeKind") or "").strip() or None,
+                    "acres": acres,
+                    "containment_percent": _to_float(attrs.get("PercentContained")),
+                    "state": str(attrs.get("POOState") or "").strip() or None,
+                    "county": str(attrs.get("POOCounty") or "").strip() or None,
+                    "discovered_at": _to_iso_utc_from_millis(attrs.get("FireDiscoveryDateTime")),
+                    "updated_at": _to_iso_utc_from_millis(attrs.get("ModifiedOnDateTime_dt")),
+                    "location": {
+                        "lat": point_lat,
+                        "lon": point_lon,
+                    },
+                    "distance_miles": round(_haversine_miles(lat, lon, point_lat, point_lon), 1),
+                }
+            )
+
+        incidents.sort(
+            key=lambda item: (
+                item.get("distance_miles") if item.get("distance_miles") is not None else 9999.0,
+                -(item.get("acres") or 0),
+            )
+        )
+        return incidents[:safe_limit]
+
+    return await _get_or_refresh_shared(key, cache_type="fires_nifc", ttl=300, producer=_producer)
+
+
+async def get_fire_incidents_bbox(
+    min_lat: float,
+    min_lon: float,
+    max_lat: float,
+    max_lon: float,
+    max_results: int = 250,
+) -> dict[str, Any]:
+    safe_min_lat = max(-90.0, min(90.0, float(min_lat)))
+    safe_max_lat = max(-90.0, min(90.0, float(max_lat)))
+    safe_min_lon = max(-180.0, min(180.0, float(min_lon)))
+    safe_max_lon = max(-180.0, min(180.0, float(max_lon)))
+    if safe_min_lat > safe_max_lat:
+        safe_min_lat, safe_max_lat = safe_max_lat, safe_min_lat
+    if safe_min_lon > safe_max_lon:
+        safe_min_lon, safe_max_lon = safe_max_lon, safe_min_lon
+
+    safe_limit = max(1, min(int(max_results), 500))
+    cache_key = (
+        f"firewatch-bbox:{safe_min_lat:.4f},{safe_min_lon:.4f},{safe_max_lat:.4f},{safe_max_lon:.4f}:n{safe_limit}"
+    )
+
+    async def _producer() -> dict[str, Any]:
+        center_lat = (safe_min_lat + safe_max_lat) / 2.0
+        center_lon = (safe_min_lon + safe_max_lon) / 2.0
+        raw = await _http_get_with_retry(
+            url=NIFC_INCIDENTS_URL,
+            upstream_name="nifc_fire",
+            client_key="nifc_fire",
+            retries=3,
+            params={
+                "where": "IncidentTypeCategory='WF'",
+                "outFields": (
+                    "OBJECTID,IrwinID,UniqueFireIdentifier,IncidentName,IncidentShortDescription,"
+                    "IncidentTypeCategory,IncidentTypeKind,PercentContained,IncidentSize,DiscoveryAcres,"
+                    "POOState,POOCounty,FireDiscoveryDateTime,ModifiedOnDateTime_dt"
+                ),
+                "returnGeometry": "true",
+                "geometry": f"{safe_min_lon},{safe_min_lat},{safe_max_lon},{safe_max_lat}",
+                "geometryType": "esriGeometryEnvelope",
+                "inSR": "4326",
+                "spatialRel": "esriSpatialRelIntersects",
+                "orderByFields": "ModifiedOnDateTime_dt DESC",
+                "resultRecordCount": str(safe_limit),
+                "f": "json",
+            },
+        )
+
+        incidents: list[dict[str, Any]] = []
+        for feature in raw.get("features", []) or []:
+            attrs = feature.get("attributes") if isinstance(feature, dict) else {}
+            geom = feature.get("geometry") if isinstance(feature, dict) else {}
+            attrs = attrs if isinstance(attrs, dict) else {}
+            geom = geom if isinstance(geom, dict) else {}
+
+            point_lon = _to_float(geom.get("x"))
+            point_lat = _to_float(geom.get("y"))
+            if point_lat is None or point_lon is None:
+                continue
+
+            incident_id = str(
+                attrs.get("IrwinID")
+                or attrs.get("UniqueFireIdentifier")
+                or attrs.get("OBJECTID")
+                or ""
+            ).strip()
+            if not incident_id:
+                continue
+
+            acres = _to_float(attrs.get("IncidentSize"))
+            if acres is None:
+                acres = _to_float(attrs.get("DiscoveryAcres"))
+
+            incidents.append(
+                {
+                    "id": incident_id,
+                    "name": str(attrs.get("IncidentName") or "Unnamed wildfire").strip(),
+                    "description": str(attrs.get("IncidentShortDescription") or "").strip() or None,
+                    "incident_type": str(attrs.get("IncidentTypeCategory") or "WF").strip() or "WF",
+                    "incident_kind": str(attrs.get("IncidentTypeKind") or "").strip() or None,
+                    "acres": acres,
+                    "containment_percent": _to_float(attrs.get("PercentContained")),
+                    "state": str(attrs.get("POOState") or "").strip() or None,
+                    "county": str(attrs.get("POOCounty") or "").strip() or None,
+                    "discovered_at": _to_iso_utc_from_millis(attrs.get("FireDiscoveryDateTime")),
+                    "updated_at": _to_iso_utc_from_millis(attrs.get("ModifiedOnDateTime_dt")),
+                    "location": {
+                        "lat": point_lat,
+                        "lon": point_lon,
+                    },
+                    "distance_miles": round(_haversine_miles(center_lat, center_lon, point_lat, point_lon), 1),
+                }
+            )
+
+        incidents.sort(
+            key=lambda item: (
+                -(item.get("acres") or 0),
+                item.get("distance_miles") if item.get("distance_miles") is not None else 9999.0,
+            )
+        )
+
+        return {
+            "source": "nifc",
+            "bbox": {
+                "min_lat": safe_min_lat,
+                "min_lon": safe_min_lon,
+                "max_lat": safe_max_lat,
+                "max_lon": safe_max_lon,
+            },
+            "incidents": incidents[:safe_limit],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    return await _get_or_refresh_shared(cache_key, cache_type="fires_nifc", ttl=120, producer=_producer)
+
+
+async def get_fire_incidents_multi(
+    locations: list[dict[str, Any]],
+    radius_miles: int = 250,
+    max_results: int = 30,
+) -> dict[str, Any]:
+    normalized_locations = [
+        {
+            "lat": float(loc["lat"]),
+            "lon": float(loc["lon"]),
+            "label": loc.get("label") or f"{loc['lat']},{loc['lon']}",
+        }
+        for loc in locations
+    ]
+
+    safe_radius = max(25, min(int(radius_miles), 500))
+    safe_limit = max(1, min(int(max_results), 100))
+    cache_key = "firewatch-multi:" + "|".join(
+        f"{loc['label']}@{loc['lat']:.4f},{loc['lon']:.4f}" for loc in normalized_locations
+    ) + f":r{safe_radius}:n{safe_limit}"
+
+    async def _producer() -> dict[str, Any]:
+        by_location = await asyncio.gather(
+            *(get_fire_incidents(loc["lat"], loc["lon"], safe_radius, safe_limit) for loc in normalized_locations)
+        )
+
+        merged: dict[str, dict[str, Any]] = {}
+        for loc, incidents in zip(normalized_locations, by_location):
+            for incident in incidents:
+                incident_id = str(incident.get("id") or "").strip()
+                if not incident_id:
+                    continue
+
+                incident_distance = incident.get("distance_miles")
+                if incident_id not in merged:
+                    merged[incident_id] = {
+                        **incident,
+                        "monitored_locations": [loc["label"]],
+                        "nearest_location": loc["label"],
+                        "nearest_distance_miles": incident_distance,
+                    }
+                    continue
+
+                entry = merged[incident_id]
+                if loc["label"] not in entry["monitored_locations"]:
+                    entry["monitored_locations"].append(loc["label"])
+                if incident_distance is not None and (
+                    entry.get("nearest_distance_miles") is None
+                    or incident_distance < entry.get("nearest_distance_miles")
+                ):
+                    entry["nearest_distance_miles"] = incident_distance
+                    entry["nearest_location"] = loc["label"]
+
+        incidents_sorted = sorted(
+            merged.values(),
+            key=lambda item: (
+                item.get("nearest_distance_miles") if item.get("nearest_distance_miles") is not None else 9999.0,
+                -(item.get("acres") or 0),
+            ),
+        )[:safe_limit]
+
+        return {
+            "source": "nifc",
+            "radius_miles": safe_radius,
+            "incidents": incidents_sorted,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    return await _get_or_refresh_shared(cache_key, cache_type="fires_nifc", ttl=300, producer=_producer)
 
 
 async def _json_get_with_retry(url: str, params: dict[str, Any], upstream_name: str) -> dict[str, Any]:

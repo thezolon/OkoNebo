@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="OkoNebo">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
     <div id="alert-ticker" class="alert-ticker hidden">
@@ -90,8 +90,22 @@
                         <option value="minor">Minor</option>
                     </select>
                 </div>
+                <div id="alert-layer-filters" class="alert-layer-filters">
+                    <label><input id="alert-layer-tornado" type="checkbox" checked> Tornado</label>
+                    <label><input id="alert-layer-flood" type="checkbox" checked> Flood</label>
+                    <label><input id="alert-layer-thunderstorm" type="checkbox" checked> Thunderstorm</label>
+                </div>
                 <div id="alerts-container" class="alerts-container">
                     <div class="no-alerts">No active alerts</div>
+                </div>
+            </section>
+
+            <section class="panel-sec sidebar-alerts" id="firewatch-section">
+                <div class="panel-sec-hdr">
+                    <h3>Fire Watch <span id="firewatch-count" class="badge"></span></h3>
+                </div>
+                <div id="firewatch-container" class="alerts-container firewatch-container">
+                    <div class="no-alerts">No nearby wildfire incidents</div>
                 </div>
             </section>
 
@@ -141,6 +155,7 @@
                     <button id="radar-play-btn" class="map-btn map-btn-accent" title="Play">Play</button>
                     <button id="radar-pause-btn" class="map-btn" title="Pause">Pause</button>
                     <button id="radar-step-forward-btn" class="map-btn" title="Step forward">Next</button>
+                    <button id="return-home-btn" class="map-btn" title="Return to default monitored area">Home</button>
                     <button id="radar-reset-view-btn" class="map-btn" title="Reset to home view">Reset View</button>
                     <button id="radar-live-btn" class="map-btn" title="Jump to live radar">Live</button>
                     <span id="radar-time" class="radar-time-lbl">--</span>
@@ -154,6 +169,7 @@
                     </select>
                     <select id="owm-overlay" class="ctrl-sel-sm">
                         <option value="none">No Overlay</option>
+                        <option value="fires">Fire Incidents</option>
                         <option value="precipitation_new">OWM Precip</option>
                         <option value="clouds_new">OWM Clouds</option>
                         <option value="wind_new">OWM Wind</option>
@@ -173,6 +189,9 @@
                     </label>
                     <label class="ctrl-lbl-sm chk">
                         <input id="alert-polygons-toggle" type="checkbox" checked> Alerts
+                    </label>
+                    <label class="ctrl-lbl-sm chk">
+                        <input id="fire-overlay-toggle" type="checkbox" checked> Fires
                     </label>
                     <button id="alert-test-toggle-btn" class="map-btn" title="Toggle synthetic test alert polygon">Test Alert</button>
                 </div>
@@ -437,6 +456,6 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=5"></script>
 </body>
 </html>
