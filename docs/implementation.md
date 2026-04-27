@@ -1,6 +1,6 @@
 # OkoNebo Implementation
 
-Version: 1.2.0 (April 2026)
+Version: 1.3.0 (April 2026)
 
 ## Runtime Model
 

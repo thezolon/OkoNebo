@@ -33,4 +33,5 @@ Admins can also browse these docs in-app at `/admin-docs.html` (admin login requ
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Development setup and pull request process |
 | [RASPBERRY_PI_DEPLOYMENT.md](../RASPBERRY_PI_DEPLOYMENT.md) | Pi + battery + cell modem deployment guide |
 | [RELEASE_PROCESS.md](../RELEASE_PROCESS.md) | Release checklist and versioning |
+| [RELEASE_NOTES_v1.3.0.md](../RELEASE_NOTES_v1.3.0.md) | Release notes for v1.3.0 |
 | [RELEASE_NOTES_v1.2.0.md](../RELEASE_NOTES_v1.2.0.md) | Release notes for v1.2.0 |

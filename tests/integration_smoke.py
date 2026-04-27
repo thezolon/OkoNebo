@@ -15,7 +15,7 @@ BASE = os.getenv("WEATHERAPP_BASE_URL", "http://localhost:8888")
 def fetch_json(path: str) -> tuple[int, object]:
     url = f"{BASE}{path}"
     try:
-        with urlopen(url, timeout=15) as resp:
+        with urlopen(url, timeout=30) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             return int(resp.status), json.loads(body)
     except HTTPError as exc:
