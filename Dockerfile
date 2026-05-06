@@ -29,7 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -fs http://localhost:8000/api/bootstrap || exit 1
 
-RUN useradd --no-create-home --shell /bin/false appuser
+RUN useradd --no-create-home --shell /bin/false appuser && \
+    chown -R appuser:appuser /app
 USER appuser
 
 # Run FastAPI app
