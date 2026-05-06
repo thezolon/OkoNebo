@@ -23,5 +23,14 @@ COPY config.yaml.example ./config.yaml
 # Expose port for FastAPI backend
 EXPOSE 8000
 
+# Install curl for HEALTHCHECK
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -fs http://localhost:8000/api/bootstrap || exit 1
+
+RUN useradd --no-create-home --shell /bin/false appuser
+USER appuser
+
 # Run FastAPI app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

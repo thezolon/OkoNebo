@@ -11,3 +11,7 @@ __pycache__
 .pytest_cache
 .env
 .DS_Store
+*.db
+secure_settings.db
+cache.db
+config.yaml
