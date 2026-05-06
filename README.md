@@ -14,18 +14,22 @@ This project is also a personal demonstration of AI-assisted software developmen
 
 - **Multi-provider fallback** - NWS -> WeatherAPI -> Tomorrow.io -> Visual Crossing -> Meteomatics; first successful response wins
 - **Keyless providers** - NWS, AviationWeather (METAR), NOAA Tides start without any API key
+- **Fire Watch** - keyless NIFC wildfire incident feed around monitored locations; sidebar cards and map overlay
 - **First-run blocking overlay** - fresh installs prompt for location and optional API keys before the dashboard loads
 - **Encrypted settings store** - provider keys are stored in a Fernet-encrypted SQLite database, never in plain text on disk
-- **Optional authentication** - JWT-based login with admin and viewer roles; login rate limiting (10 attempts / 5 min / IP); token revocation on logout
+- **Optional authentication** - JWT-based login with admin and viewer roles; login rate limiting (10 attempts / 5 min / IP); token revocation on logout; auth token persisted across restarts
 - **In-app Setup panel** - edit location, timezone, providers (with per-provider pull cycles), authentication, and manage AI agent tokens without restarting; unsaved changes detection with Ctrl+S save shortcut
-- **Offline-aware UI** - persistent browser cache, last-known-good state, visible diagnostics
+- **Offline-aware UI** - persistent browser cache, last-known-good state, visible diagnostics; PWA-installable with SW update notification
 - **Responsive design** - compact/expanded panel layouts, touch-optimized mobile UX, orientation-aware rendering (Shift+C to toggle layout)
+- **Hourly chart** - 48-hour temperature and precipitation chart with day-boundary markers and live "Now" line
 - **Event timeline** - searchable/filterable event log with category filters (Observations, Alerts, Refreshes, System events)
 - **Admin observability** - real-time request/response metrics, error tracking, server connection monitoring, and operational health dashboard
 - **Radar** - RainViewer with OWM overlay option; Esri/OSM/CARTO base layers
 - **AQI fallback** - OpenWeather AQI when configured, with keyless Open-Meteo fallback
 - **PWS** - personal weather station comparison and trend chart
+- **Home Assistant integration** - native weather platform endpoint and automation trigger support
 - **Runtime version visibility** - dashboard and admin pages show the running app version/build
+- **Security hardened** - non-root Docker container, SRI on CDN scripts, XSS mitigations, encrypted secrets
 - **CI pipeline** - compile checks, markdown link checks, unittest discovery, Bandit, Docker build + health + smoke on every push
 
 ## Screenshot
