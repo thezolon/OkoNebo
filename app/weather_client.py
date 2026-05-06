@@ -452,6 +452,8 @@ async def _resolve_point(lat: float, lon: float, user_agent: str) -> dict:
         data = await _get(user_agent, f"{BASE}/points/{lat},{lon}")
         props = data["properties"]
         station_data = await _get(user_agent, props["observationStations"])
+        if not station_data.get("features"):
+            raise RuntimeError("NWS: no observation stations found for this point")
         station_id = station_data["features"][0]["properties"]["stationIdentifier"]
         station_url = f"{BASE}/stations/{station_id}/observations/latest"
         return {
@@ -1668,31 +1670,48 @@ async def get_aviationweather_metar(lat: float, lon: float, user_agent: str = "w
 NOAA_TIDES_BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
 
 
+async def _noaa_station_catalog() -> list[dict[str, Any]]:
+    """
+    Fetch (and cache for 24 h) the full NOAA tide-prediction station catalog.
+    Separating this from per-location tide fetches means a cache miss on
+    predictions does not re-download the entire global station list.
+    """
+    async def _producer() -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            _bump_upstream_call("noaa_tides")
+            resp = await client.get(
+                "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/tidepredstations.json",
+                params={"expand": "detail", "type": "tidepredictions"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        stations = data.get("stationList", [])
+        if not isinstance(stations, list) or not stations:
+            raise RuntimeError("NOAA tides: no stations returned")
+        return {"stationList": stations, "updated_at": time.time()}
+
+    result = await _get_or_refresh_shared(
+        "noaa-station-catalog",
+        cache_type="noaa_station_catalog",
+        ttl=86400,
+        producer=_producer,
+    )
+    return result["stationList"]
+
+
 async def get_noaa_tides(lat: float, lon: float, days: int = 2) -> dict[str, Any]:
     """
     Fetch tide predictions from the nearest NOAA tide station.
     Returns predictions for the next `days` days.  Cached 30 minutes.
+    The station catalog is cached separately for 24 hours so per-location
+    cache misses do not re-download the full global station list.
     """
     safe_days = max(1, min(int(days), 7))
     key = f"noaa-tides:{lat:.3f},{lon:.3f}:{safe_days}"
 
     async def _producer() -> dict[str, Any]:
-        # Step 1: find nearest station using the NOAA metadata API.
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            _bump_upstream_call("noaa_tides")
-            station_resp = await client.get(
-                "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/tidepredstations.json",
-                params={"expand": "detail", "type": "tidepredictions"},
-            )
-            station_resp.raise_for_status()
-            station_data = station_resp.json()
-
-        stations = station_data.get("stationList", []) if isinstance(station_data.get("stationList", []), list) else []
-        if not stations:
-            raise RuntimeError("NOAA tides: no stations returned")
-
-        # Find the station with the minimum great-circle distance.
-        import math
+        # Step 1: find nearest station from the shared 24-h catalog cache.
+        stations = await _noaa_station_catalog()
 
         def _dist(s: dict) -> float:
             try:
@@ -2186,11 +2205,13 @@ async def _pws_get_history_one(station_id: str, api_key: str) -> dict:
         "apiKey": api_key,
         "numericPrecision": "decimal",
     }
-    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
-        _bump_upstream_call("pws_history")
-        resp = await client.get(PWS_HISTORY_BASE, params=params)
-        resp.raise_for_status()
-        return resp.json()
+    return await _http_get_with_retry(
+        url=PWS_HISTORY_BASE,
+        upstream_name="pws_history",
+        client_key="pws_history",
+        retries=3,
+        params=params,
+    )
 
 
 def _norm_pws_history(station_id: str, raw: dict, hours: int) -> dict:
@@ -2207,7 +2228,7 @@ def _norm_pws_history(station_id: str, raw: dict, hours: int) -> dict:
         if not obs_time:
             continue
         try:
-            obs_epoch = time.mktime(time.strptime(obs_time.replace("Z", ""), "%Y-%m-%dT%H:%M:%S"))
+            obs_epoch = datetime.fromisoformat(obs_time.replace("Z", "+00:00")).timestamp()
         except Exception:
             obs_epoch = None
 
