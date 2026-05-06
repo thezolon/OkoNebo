@@ -50,7 +50,12 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           if (res && res.status === 200 && req.method === 'GET') {
             const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(req, copy);
+              self.clients.matchAll({ type: 'window' }).then((clients) => {
+                clients.forEach((c) => c.postMessage({ type: 'SW_UPDATE' }));
+              });
+            });
           }
           return res;
         })

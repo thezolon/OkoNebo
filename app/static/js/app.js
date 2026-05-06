@@ -124,6 +124,12 @@ function registerServiceWorker() {
             // Ignore service worker registration failures in unsupported contexts.
         });
     });
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'SW_UPDATE') {
+            console.info('OkoNebo: update available, reload to get the latest version.');
+            showError('OkoNebo updated in the background — reload to get the latest version.');
+        }
+    });
 }
 
 const runtime = {
