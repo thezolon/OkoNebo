@@ -14,3 +14,10 @@ services:
       - ./config.yaml:/app/config.yaml
       - ./secure_settings.db:/app/secure_settings.db
       - ./cache.db:/app/cache.db
+    # Resource limits tuned for Raspberry Pi (Pi 4 / Pi 5 with 1–4 GB RAM).
+    # Raise memory if running on a host with more available headroom.
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
