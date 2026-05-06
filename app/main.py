@@ -69,7 +69,7 @@ def _load_config_file() -> dict[str, Any]:
 
 
 _cfg = _load_config_file()
-_cfg_lock = None
+_cfg_lock: asyncio.Lock | None = None
 
 PROVIDER_IDS = [
     "nws",
@@ -306,9 +306,45 @@ def _env_bool(name: str, default: bool) -> bool:
 _settings_seed = (
     os.getenv("SETTINGS_ENCRYPTION_KEY")
     or str((_cfg.get("auth", {}) or {}).get("token_secret") or "")
-    or str(_cfg.get("user_agent") or "okonebo-local")
 )
+if not _settings_seed:
+    _settings_seed = secrets.token_hex(32)
+    LOGGER.warning(
+        "SECURITY WARNING: No SETTINGS_ENCRYPTION_KEY env var or auth.token_secret in config found. "
+        "A random encryption key has been generated for this process. "
+        "Secure settings will NOT be readable after restart. "
+        "Set SETTINGS_ENCRYPTION_KEY in your environment to persist encrypted settings across restarts."
+    )
 SECURE_STORE = SecureSettingsStore(_CONFIG_PATH.parent / "secure_settings.db", key_seed=_settings_seed)
+
+
+def _hash_password(password: str, salt: str | None = None) -> str:
+    safe_salt = salt or secrets.token_hex(16)
+    rounds = 120_000
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), safe_salt.encode(), rounds)
+    return f"pbkdf2_sha256${rounds}${safe_salt}${digest.hex()}"
+
+
+def _upsert_env_user_into(users: list[dict[str, Any]], role: str, username: str, password: str) -> None:
+    """Upsert a bootstrap env-credential user into *users* in-place.
+
+    Extracted from the duplicate inner functions that previously lived inside
+    _apply_config and _refresh_auth_users_from_store (Issue #62).
+    """
+    if not username or not password:
+        return
+    match = None
+    for user in users:
+        if str(user.get("username", "")).strip().lower() == username.lower():
+            match = user
+            break
+    if match is None:
+        match = {}
+        users.append(match)
+    match["username"] = username
+    match["role"] = role
+    match["password_hash"] = _hash_password(password)
+    match.pop("password", None)
 
 
 def _apply_config(cfg: dict[str, Any]) -> None:
@@ -371,33 +407,29 @@ def _apply_config(cfg: dict[str, Any]) -> None:
     env_viewer_username = str(os.getenv("VIEWER_USERNAME") or "").strip()
     env_viewer_password = str(os.getenv("VIEWER_PASSWORD") or "").strip()
 
-    def _upsert_env_user(role: str, username: str, password: str) -> None:
-        if not username or not password:
-            return
-        match = None
-        for user in AUTH_USERS:
-            if str(user.get("username", "")).strip().lower() == username.lower():
-                match = user
-                break
-        if match is None:
-            match = {}
-            AUTH_USERS.append(match)
-        match["username"] = username
-        match["role"] = role
-        match["password_hash"] = _hash_password(password)
-        match.pop("password", None)
-
     # Env credentials are bootstrap-only: if SQLite already has auth users,
     # ignore env username/password and trust persisted identities.
     if not sqlite_has_auth_users:
-        _upsert_env_user("admin", env_admin_username, env_admin_password)
-        _upsert_env_user("viewer", env_viewer_username, env_viewer_password)
+        _upsert_env_user_into(AUTH_USERS, "admin", env_admin_username, env_admin_password)
+        _upsert_env_user_into(AUTH_USERS, "viewer", env_viewer_username, env_viewer_password)
 
-    AUTH_TOKEN_SECRET = str(
-        os.getenv("AUTH_TOKEN_SECRET")
-        or auth_cfg.get("token_secret")
-        or secrets.token_hex(32)
-    )
+    _env_token_secret = os.getenv("AUTH_TOKEN_SECRET")
+    _cfg_token_secret = auth_cfg.get("token_secret")
+    _stored_token_secret = str(SECURE_STORE.get_json("auth.token_secret", "") or "")
+    if _env_token_secret:
+        AUTH_TOKEN_SECRET = str(_env_token_secret)
+    elif _cfg_token_secret:
+        AUTH_TOKEN_SECRET = str(_cfg_token_secret)
+    elif _stored_token_secret:
+        AUTH_TOKEN_SECRET = _stored_token_secret
+    else:
+        AUTH_TOKEN_SECRET = secrets.token_hex(32)
+        # Persist the freshly-generated secret so it survives restarts (same pattern
+        # as VAPID key persistence via _get_or_create_push_vapid_keys).
+        try:
+            SECURE_STORE.set_json("auth.token_secret", AUTH_TOKEN_SECRET)
+        except Exception:
+            pass
     AGENT_TOKENS = list(SECURE_STORE.get_json("auth.agent_tokens", []) or [])
     REVOKED_AGENT_TOKEN_IDS = set(
         str(token_id)
@@ -485,7 +517,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"] if not AUTH_ENABLED else (
+        os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") or ["*"]
+    ),
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -618,13 +652,6 @@ def _b64url_decode(raw: str) -> bytes:
     return base64.urlsafe_b64decode(raw + padding)
 
 
-def _hash_password(password: str, salt: str | None = None) -> str:
-    safe_salt = salt or secrets.token_hex(16)
-    rounds = 120_000
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), safe_salt.encode(), rounds)
-    return f"pbkdf2_sha256${rounds}${safe_salt}${digest.hex()}"
-
-
 def _verify_password(password: str, stored: str) -> bool:
     if not stored.startswith("pbkdf2_sha256$"):
         return False
@@ -669,24 +696,8 @@ def _refresh_auth_users_from_store() -> None:
     env_viewer_username = str(os.getenv("VIEWER_USERNAME") or "").strip()
     env_viewer_password = str(os.getenv("VIEWER_PASSWORD") or "").strip()
 
-    def _upsert_env_user(role: str, username: str, password: str) -> None:
-        if not username or not password:
-            return
-        match = None
-        for user in AUTH_USERS:
-            if str(user.get("username", "")).strip().lower() == username.lower():
-                match = user
-                break
-        if match is None:
-            match = {}
-            AUTH_USERS.append(match)
-        match["username"] = username
-        match["role"] = role
-        match["password_hash"] = _hash_password(password)
-        match.pop("password", None)
-
-    _upsert_env_user("admin", env_admin_username, env_admin_password)
-    _upsert_env_user("viewer", env_viewer_username, env_viewer_password)
+    _upsert_env_user_into(AUTH_USERS, "admin", env_admin_username, env_admin_password)
+    _upsert_env_user_into(AUTH_USERS, "viewer", env_viewer_username, env_viewer_password)
 
 
 def _make_token(
@@ -1115,7 +1126,10 @@ async def api_auth_guard(request: Request, call_next):
 
     # Allow exactly one unauthenticated first-run settings save so bootstrap can complete
     # even when AUTH_ENABLED is forced via environment.
-    if path == "/api/settings" and method == "POST" and not FIRST_RUN_COMPLETE:
+    # Belt-and-suspenders: also check persisted value so a restarted process with a stale
+    # in-memory FIRST_RUN_COMPLETE=False cannot be tricked into re-accepting the bypass.
+    _store_first_run_complete = bool(SECURE_STORE.get_json("bootstrap.first_run_complete", False))
+    if path == "/api/settings" and method == "POST" and not FIRST_RUN_COMPLETE and not _store_first_run_complete:
         try:
             raw_body = await request.body()
             request._body = raw_body
@@ -1243,6 +1257,8 @@ def _sanitize_push_subscription(payload: dict[str, Any]) -> dict[str, Any]:
     endpoint = str(payload.get("endpoint") or "").strip()
     if not endpoint:
         raise HTTPException(status_code=400, detail="subscription endpoint is required")
+    if not endpoint.startswith("https://"):
+        raise ValueError("Push subscription endpoint must use https://")
 
     raw_keys = payload.get("keys")
     keys: dict[str, Any] = raw_keys if isinstance(raw_keys, dict) else {}
@@ -2417,7 +2433,7 @@ async def api_ha_weather():
                 "condition": _ha_condition_from_text(item.get("short_forecast") or item.get("shortForecast")),
                 "temperature": item.get("temperature"),
                 "templow": None,
-                "precipitation_probability": item.get("precip_probability"),
+                "precipitation_probability": item.get("precip_percent"),
             }
         )
 
@@ -2688,6 +2704,7 @@ async def api_stats():
         "opening browser dev tools."
     ),
     tags=["Debug"],
+    include_in_schema=False,  # Issue #45: hidden from public OpenAPI docs; TODO: enforce auth dependency
 )
 async def api_debug():
     active_rate_limit_clients = 0
@@ -2850,6 +2867,7 @@ def _support_bundle_payload() -> dict[str, Any]:
     summary="Safe support bundle",
     description="Returns a pre-redacted diagnostic bundle intended for safe sharing when requesting help.",
     tags=["Debug"],
+    include_in_schema=False,  # Issue #45: hidden from public OpenAPI docs; TODO: enforce auth dependency
 )
 async def api_support_bundle():
     return _support_bundle_payload()
