@@ -120,7 +120,7 @@ let viewportOverlayTimer = null;
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=5').catch(() => {
+        navigator.serviceWorker.register('/sw.js?v=7').catch(() => {
             // Ignore service worker registration failures in unsupported contexts.
         });
     });
@@ -2791,6 +2791,121 @@ async function renderOwmDaily(forceFetch = false) {
     });
 }
 
+const dayBoundaryPlugin = {
+    id: 'dayBoundaryLines',
+    afterDatasetsDraw(chart, _args, pluginOptions) {
+        const xScale = chart.scales?.x;
+        if (!xScale) return;
+
+        const boundaries = pluginOptions?.boundaries || [];
+        const nowIndex = pluginOptions?.nowIndex ?? null;
+        const nowX = (nowIndex !== null)
+            ? (() => {
+                const i = Math.floor(nowIndex);
+                const frac = nowIndex - i;
+                const x0 = xScale.getPixelForValue(i);
+                const x1 = xScale.getPixelForValue(i + 1);
+                return (x1 != null && !isNaN(x1)) ? x0 + frac * (x1 - x0) : x0;
+            })()
+            : null;
+
+        const { ctx, chartArea } = chart;
+        if (!chartArea) return;
+
+        ctx.save();
+        ctx.font = '9px "Segoe UI", sans-serif';
+        ctx.textBaseline = 'top';
+
+        // Day-boundary lines
+        boundaries.forEach((b) => {
+            const x = xScale.getPixelForValue(b.index);
+
+            ctx.strokeStyle = 'rgba(180, 200, 220, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 4]);
+            ctx.beginPath();
+            ctx.moveTo(x, chartArea.top);
+            ctx.lineTo(x, chartArea.bottom);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            const label = b.label;
+            const textWidth = ctx.measureText(label).width;
+            const padX = 4;
+            const padY = 2;
+            const boxW = textWidth + padX * 2;
+            const boxH = 13;
+            const boxX = Math.max(chartArea.left, Math.min(x - boxW / 2, chartArea.right - boxW));
+            const boxY = chartArea.bottom - boxH - 2;
+
+            ctx.fillStyle = 'rgba(7, 11, 16, 0.75)';
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.fillStyle = 'rgba(180, 200, 220, 0.65)';
+            ctx.fillText(label, boxX + padX, boxY + padY);
+        });
+
+        // "Now" line — interpolated pixel position, solid red
+        if (nowX !== null && nowX >= chartArea.left && nowX <= chartArea.right) {
+            ctx.strokeStyle = 'rgba(255, 80, 80, 0.85)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(nowX, chartArea.top);
+            ctx.lineTo(nowX, chartArea.bottom);
+            ctx.stroke();
+
+            const label = 'Now';
+            const textWidth = ctx.measureText(label).width;
+            const padX = 4;
+            const padY = 2;
+            const boxW = textWidth + padX * 2;
+            const boxH = 13;
+            const boxX = Math.max(chartArea.left, Math.min(nowX - boxW / 2, chartArea.right - boxW));
+            const boxY = chartArea.top + 4;
+
+            ctx.fillStyle = 'rgba(140, 30, 30, 0.85)';
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.fillStyle = '#ffaaaa';
+            ctx.fillText(label, boxX + padX, boxY + padY);
+        }
+
+        ctx.restore();
+    },
+};
+
+function buildDayBoundaryMarkers(hourlyPeriods) {
+    if (!Array.isArray(hourlyPeriods) || hourlyPeriods.length === 0) return [];
+
+    const boundaries = [];
+    let dayCount = 0; // 0 = first day seen (Today), 1 = Tomorrow, 2+ = weekday name
+
+    const firstTs = parseTimestamp(hourlyPeriods[0].start_time);
+    const firstDate = firstTs != null ? new Date(firstTs) : null;
+    let prevDateStr = firstDate
+        ? `${firstDate.getFullYear()}-${firstDate.getMonth()}-${firstDate.getDate()}`
+        : null;
+
+    for (let i = 1; i < hourlyPeriods.length; i++) {
+        const ts = parseTimestamp(hourlyPeriods[i].start_time);
+        if (ts == null) continue;
+        const d = new Date(ts);
+        const dateStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        if (dateStr !== prevDateStr) {
+            dayCount++;
+            let label;
+            if (dayCount === 1) {
+                label = 'Tomorrow';
+            } else {
+                label = d.toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric' });
+            }
+            boundaries.push({ index: i, label });
+            prevDateStr = dateStr;
+        }
+    }
+
+    return boundaries;
+}
+
 const locationImpactPlugin = {
     id: 'locationImpactLines',
     afterDatasetsDraw(chart, _args, pluginOptions) {
@@ -2915,13 +3030,29 @@ async function renderHourlyChart(forceFetch = false) {
     const temps = cache.hourly.map((h) => state.units === 'c' ? fToC(h.temp_f) : h.temp_f);
     const pops = cache.hourly.map((h) => h.precip_percent || 0);
     const impactMarkers = buildLocationImpactMarkers(cache.hourly.slice(0, 48), getEffectiveAlerts());
+    const dayBoundaries = buildDayBoundaryMarkers(cache.hourly);
+
+    // Compute fractional index for current time so the "Now" line falls between ticks
+    let nowFractionalIndex = null;
+    const nowTs = Date.now();
+    const hourlyTs = cache.hourly.map((h) => parseTimestamp(h.start_time));
+    const nowAfter = hourlyTs.findIndex((ts) => ts != null && ts > nowTs);
+    if (nowAfter > 0) {
+        const t0 = hourlyTs[nowAfter - 1];
+        const t1 = hourlyTs[nowAfter];
+        if (t0 != null && t1 != null && t1 > t0) {
+            nowFractionalIndex = (nowAfter - 1) + (nowTs - t0) / (t1 - t0);
+        }
+    } else if (nowAfter === 0) {
+        nowFractionalIndex = 0;
+    }
 
     const ctx = document.getElementById('hourly-chart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
 
     chartInstance = new Chart(ctx, {
         type: 'line',
-        plugins: [locationImpactPlugin],
+        plugins: [locationImpactPlugin, dayBoundaryPlugin],
         data: {
             labels,
             datasets: [
@@ -2957,6 +3088,10 @@ async function renderHourlyChart(forceFetch = false) {
                 legend: { display: true, labels: { color: '#7e99b8', font: { size: 10 } } },
                 locationImpactLines: {
                     markers: impactMarkers,
+                },
+                dayBoundaryLines: {
+                    boundaries: dayBoundaries,
+                    nowIndex: nowFractionalIndex,
                 },
             },
             scales: {
