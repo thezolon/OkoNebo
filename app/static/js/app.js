@@ -112,6 +112,7 @@ let monitoredLocationsLayer = null;
 let radarAnimating = false;
 let radarDirection = 1;
 let currentRFrameIndex = 0;
+let _animationLoopId = null;
 
 let timerFullRefresh = null;
 let timerAgeRefresh = null;
@@ -120,7 +121,7 @@ let viewportOverlayTimer = null;
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=7').catch(() => {
+        navigator.serviceWorker.register('/sw.js?v=8').catch(() => {
             // Ignore service worker registration failures in unsupported contexts.
         });
     });
@@ -735,10 +736,10 @@ function renderTimeline() {
         item.className = `timeline-item ${entry.type}`;
         item.innerHTML = `
             <div class="timeline-top">
-                <div class="timeline-title">${entry.title}</div>
+                <div class="timeline-title">${escapeHtml(entry.title)}</div>
                 <div class="timeline-time">${formatTime(entry.timestamp)}</div>
             </div>
-            <div class="timeline-detail">${entry.detail || ''}</div>
+            <div class="timeline-detail">${escapeHtml(entry.detail || '')}</div>
         `;
         list.appendChild(item);
     });
@@ -838,7 +839,7 @@ function displayWind(raw) {
 
 function displayDist(miles) {
     if (miles == null) return '--';
-    return state.units === 'c' ? `${(miles * 1.60934).toFixed(1)} km` : `${miles} mi`;
+    return state.units === 'c' ? `${(miles * 1.60934).toFixed(1)} km` : `${Number(miles).toFixed(1)} mi`;
 }
 
 function displayPressure(inHg) {
@@ -1343,16 +1344,16 @@ function renderAlertPolygons() {
         onEachFeature: (feature, layer) => {
             const props = feature.properties || {};
             const expires = props.expires ? `<div>Expires ${formatTime(props.expires)}</div>` : '';
-            const urgency = props.urgency ? `<div>Urgency: ${props.urgency}</div>` : '';
-            const areas = props.areas_affected ? `<div>${props.areas_affected}</div>` : '';
+            const urgency = props.urgency ? `<div>Urgency: ${escapeHtml(props.urgency)}</div>` : '';
+            const areas = props.areas_affected ? `<div>${escapeHtml(props.areas_affected)}</div>` : '';
             const monitored = Array.isArray(props.monitored_locations) && props.monitored_locations.length
-                ? `<div>Monitoring: ${props.monitored_locations.join(', ')}</div>`
+                ? `<div>Monitoring: ${props.monitored_locations.map(escapeHtml).join(', ')}</div>`
                 : '';
             const synthetic = props.synthetic ? '<div>Test polygon</div>' : '';
             layer.bindPopup(`
                 <div style="min-width:220px">
-                    <strong>${props.event || props.headline || 'Alert'}</strong>
-                    <div>${props.severity || 'Unknown severity'}</div>
+                    <strong>${escapeHtml(props.event || props.headline || 'Alert')}</strong>
+                    <div>${escapeHtml(props.severity || 'Unknown severity')}</div>
                     ${urgency}
                     ${expires}
                     ${monitored}
@@ -1772,16 +1773,16 @@ function restorePersistentState() {
         cache.current = persistent.cache.current;
     }
     if (persistent.cache && persistent.cache.forecast) {
-        cache.forecast = persistent.cache.forecast;
+        cache.forecast = Array.isArray(persistent.cache.forecast) ? persistent.cache.forecast : [];
     }
     if (persistent.cache && persistent.cache.hourly) {
-        cache.hourly = persistent.cache.hourly;
+        cache.hourly = Array.isArray(persistent.cache.hourly) ? persistent.cache.hourly : [];
     }
     if (persistent.cache && persistent.cache.alerts) {
-        cache.alerts = persistent.cache.alerts;
+        cache.alerts = Array.isArray(persistent.cache.alerts) ? persistent.cache.alerts : [];
     }
     if (persistent.cache && persistent.cache.firewatch) {
-        cache.firewatch = persistent.cache.firewatch;
+        cache.firewatch = Array.isArray(persistent.cache.firewatch) ? persistent.cache.firewatch : [];
     }
     if (persistent.cache && persistent.cache.owm) {
         cache.owm = persistent.cache.owm;
@@ -2174,6 +2175,11 @@ async function renderHeader(forceFetch = false) {
     const lbl = document.getElementById('location-label');
     if (lbl) lbl.textContent = cache.config.label || 'Weather';
 
+    // Expose configured location timezone client-side (issue #59).
+    if (cache.config.timezone) {
+        state.timezone = cache.config.timezone;
+    }
+
     const owmProvider = cache.bootstrap?.providers?.openweather || null;
     const owmUiAvailable = owmProvider
         ? !!(owmProvider.enabled && owmProvider.configured)
@@ -2528,7 +2534,10 @@ async function renderFireWatch(forceFetch = false) {
 }
 
 async function renderAlerts(forceFetch = false) {
-    if (forceFetch || cache.alerts.length === 0) cache.alerts = await fetchAPIDeduped('/alerts');
+    if (forceFetch || cache.alerts.length === 0) {
+        const payload = await fetchAPIDeduped('/alerts');
+        cache.alerts = Array.isArray(payload) ? payload : (cache.alerts || []);
+    }
 
     const container = document.getElementById('alerts-container');
     container.innerHTML = '';
@@ -2558,15 +2567,15 @@ async function renderAlerts(forceFetch = false) {
         if (alert.synthetic) card.classList.add('synthetic');
         const monitoredLocations = Array.isArray(alert.monitored_locations) ? alert.monitored_locations : [];
         card.innerHTML = `
-            <div class="alert-event">${alert.event || alert.headline || 'Alert'}</div>
+            <div class="alert-event">${escapeHtml(alert.event || alert.headline || 'Alert')}</div>
             <div class="alert-meta">
-                <span>${alert.severity || ''}</span>
-                <span>${alert.urgency || ''}</span>
+                <span>${escapeHtml(alert.severity || '')}</span>
+                <span>${escapeHtml(alert.urgency || '')}</span>
                 <span>${alert.expires ? `Expires ${formatTime(alert.expires)}` : ''}</span>
             </div>
-            ${monitoredLocations.length ? `<div class="alert-coverage">Affects ${monitoredLocations.join(' · ')}</div>` : ''}
+            ${monitoredLocations.length ? `<div class="alert-coverage">Affects ${monitoredLocations.map(escapeHtml).join(' · ')}</div>` : ''}
             ${alert.synthetic ? '<div class="alert-test-pill">Test polygon</div>' : ''}
-            ${alert.description ? `<div class="alert-desc">${alert.description}</div>` : ''}
+            ${alert.description ? `<div class="alert-desc">${escapeHtml(alert.description)}</div>` : ''}
         `;
         card.addEventListener('click', () => {
             card.classList.toggle('expanded');
@@ -2736,7 +2745,10 @@ async function renderPws(forceFetch = false) {
 }
 
 async function renderForecast(forceFetch = false) {
-    if (forceFetch || cache.forecast.length === 0) cache.forecast = await fetchAPIDeduped('/forecast');
+    if (forceFetch || cache.forecast.length === 0) {
+        const payload = await fetchAPIDeduped('/forecast');
+        cache.forecast = Array.isArray(payload) ? payload : (cache.forecast || []);
+    }
 
     const list = document.getElementById('forecast-list');
     list.innerHTML = '';
@@ -2750,10 +2762,11 @@ async function renderForecast(forceFetch = false) {
     filtered.forEach((p) => {
         const row = document.createElement('div');
         row.className = 'fc-row';
+        const fcIconSrc = (p.icon && /^(https?:\/\/|\/)/.test(p.icon)) ? p.icon : '';
         row.innerHTML = `
-            <div class="fc-name">${p.name || ''}</div>
-            <img class="fc-icon" src="${p.icon || ''}" alt="${p.short_forecast || ''}">
-            <div class="fc-desc">${p.short_forecast || ''}</div>
+            <div class="fc-name">${escapeHtml(p.name || '')}</div>
+            <img class="fc-icon" src="${fcIconSrc}" alt="${escapeHtml(p.short_forecast || '')}">
+            <div class="fc-desc">${escapeHtml(p.short_forecast || '')}</div>
             <div>
                 <div class="fc-temp">${displayTemp(p.temp_f)}</div>
                 ${p.precip_percent != null ? `<div class="fc-pop">${p.precip_percent}%</div>` : ''}
@@ -2777,17 +2790,22 @@ async function renderOwmDaily(forceFetch = false) {
     list.innerHTML = '';
 
     cache.owm.daily.forEach((d) => {
-        const dayName = new Date(d.dt * 1000).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+        // TODO: use configured location timezone when available (issue #59)
+        const dayName = new Date(d.dt * 1000).toLocaleDateString([], {
+            weekday: 'short', month: 'short', day: 'numeric',
+            ...(state.timezone ? { timeZone: state.timezone } : {}),
+        });
         const icon = d.weather && d.weather[0] ? `https://openweathermap.org/img/wn/${d.weather[0].icon}.png` : '';
         const desc = d.weather && d.weather[0] ? d.weather[0].description : '';
         const pop = d.pop != null ? Math.round(d.pop * 100) : null;
 
         const row = document.createElement('div');
         row.className = 'fc-row';
+        const owmIconSrc = (icon && /^(https?:\/\/|\/)/.test(icon)) ? icon : '';
         row.innerHTML = `
-            <div class="fc-name">${dayName}</div>
-            <img class="fc-icon" src="${icon}" alt="${desc}">
-            <div class="fc-desc">${desc}</div>
+            <div class="fc-name">${escapeHtml(dayName)}</div>
+            <img class="fc-icon" src="${owmIconSrc}" alt="${escapeHtml(desc)}">
+            <div class="fc-desc">${escapeHtml(desc)}</div>
             <div>
                 <div class="fc-temp">${displayTemp(d.temp?.max)} / ${displayTemp(d.temp?.min)}</div>
                 ${pop != null ? `<div class="fc-pop">${pop}%</div>` : ''}
@@ -3030,7 +3048,10 @@ function buildLocationImpactMarkers(hourlyPeriods, alerts) {
 }
 
 async function renderHourlyChart(forceFetch = false) {
-    if (forceFetch || cache.hourly.length === 0) cache.hourly = await fetchAPIDeduped('/hourly');
+    if (forceFetch || cache.hourly.length === 0) {
+        const payload = await fetchAPIDeduped('/hourly');
+        cache.hourly = Array.isArray(payload) ? payload : (cache.hourly || []);
+    }
 
     const labels = cache.hourly.map((h) => formatHM(h.start_time));
     const temps = cache.hourly.map((h) => state.units === 'c' ? fToC(h.temp_f) : h.temp_f);
@@ -3110,16 +3131,20 @@ async function renderHourlyChart(forceFetch = false) {
 }
 
 async function renderHourlyTable(forceFetch = false) {
-    if (forceFetch || cache.hourly.length === 0) cache.hourly = await fetchAPIDeduped('/hourly');
+    if (forceFetch || cache.hourly.length === 0) {
+        const payload = await fetchAPIDeduped('/hourly');
+        cache.hourly = Array.isArray(payload) ? payload : (cache.hourly || []);
+    }
     const container = document.getElementById('hourly-table');
     container.innerHTML = '';
 
     cache.hourly.slice(0, 48).forEach((h) => {
         const cell = document.createElement('div');
         cell.className = 'hourly-cell';
+        const hIconSrc = (h.icon && /^(https?:\/\/|\/)/.test(h.icon)) ? h.icon : '';
         cell.innerHTML = `
             <div class="hcell-time">${formatHM(h.start_time)}</div>
-            <img class="hcell-icon" src="${h.icon || ''}" alt="${h.short_forecast || ''}">
+            <img class="hcell-icon" src="${hIconSrc}" alt="${escapeHtml(h.short_forecast || '')}">
             <div class="hcell-temp">${displayTemp(h.temp_f)}</div>
             ${h.precip_percent != null ? `<div class="hcell-pop">${h.precip_percent}%</div>` : ''}
             <div class="hcell-wind">${displayWind(h.wind_speed)}</div>
@@ -3397,7 +3422,7 @@ async function animateRadar() {
     }
 
     await updateRadarFrame();
-    setTimeout(animateRadar, state.radarSpeedMs);
+    _animationLoopId = setTimeout(animateRadar, state.radarSpeedMs);
 }
 
 async function refreshRadar(forceMetadata = false) {
@@ -4152,12 +4177,16 @@ function setupControls() {
 
     document.getElementById('radar-play-btn').addEventListener('click', async () => {
         if (state.radarProvider === 'iem-static') return;
+        clearTimeout(_animationLoopId);
+        _animationLoopId = null;
         radarAnimating = true;
         await animateRadar();
     });
 
     document.getElementById('radar-pause-btn').addEventListener('click', () => {
         radarAnimating = false;
+        clearTimeout(_animationLoopId);
+        _animationLoopId = null;
     });
 
     document.getElementById('radar-step-back-btn').addEventListener('click', () => {
