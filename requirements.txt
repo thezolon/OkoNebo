@@ -4,5 +4,5 @@ httpx==0.28.1
 pyyaml==6.0.3
 cachetools==7.1.1
 python-dotenv==1.2.2
-cryptography==47.0.0
+cryptography==48.0.0
 pywebpush==2.3.0  # pinned from >=2.3.0,<3; update after testing
