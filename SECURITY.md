@@ -4,8 +4,28 @@
 
 | Version | Supported |
 |---------|-----------|
-| v1.0.x  | Yes       |
-| < v1.0  | No        |
+| v1.5.x  | Yes       |
+| < v1.5  | No — upgrade immediately (CVE-2026-48710) |
+
+## Security Advisories
+
+### CVE-2026-48710 — BadHost: Auth Bypass via Host Header Injection (fixed in v1.5.0)
+
+**Severity:** Critical  
+**Affected versions:** All OkoNebo versions prior to v1.5.0  
+**Fixed in:** v1.5.0 (2026-05-28)
+
+Starlette < 1.0.1 constructs `request.url` from the HTTP `Host` header. OkoNebo's auth
+middleware used `request.url.path` for routing decisions, allowing an unauthenticated
+attacker to supply a crafted `Host` header (e.g. `Host: okonebo.local/api/auth/?x=`) to
+make the middleware see a whitelisted path while the request actually targets a protected
+endpoint.
+
+**Fix:** Middleware updated to use `request.scope["path"]` (immune to Host header
+injection). Starlette upgraded to 1.2.0, FastAPI to 0.136.3.
+
+**Mitigation if unable to update immediately:** Configure your reverse proxy to reject
+Host headers containing `/` or `?` characters.
 
 ## Reporting a Vulnerability
 
@@ -50,7 +70,7 @@ Items out of scope:
 |-------|------|------|
 | Secret leak scan | `scripts/security_check.py` | Fails CI if any configured key value appears in source or config files |
 | Python syntax / compile check | `py_compile` | Catches import-time errors before deployment |
-| Unit tests including auth guard and write-protection behaviour | `unittest` | 59 tests covering provider fallback (including AQI source fallback), auth middleware, settings validation, token lifecycle, observability, telemetry, and cache behavior |
+| Unit tests including auth guard and write-protection behaviour | `unittest` | 71 tests covering provider fallback (including AQI source fallback), auth middleware, CVE-2026-48710 regression, settings validation, token lifecycle, observability, telemetry, and cache behavior |
 | Docker build | `docker build` | Ensures the image builds cleanly from a cold checkout |
 | Container health + integration smoke | `curl` + `tests/integration_smoke.py` | Verifies all API endpoints respond correctly after a real container start |
 

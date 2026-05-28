@@ -1066,7 +1066,7 @@ def _observability_recommendations(obs: dict[str, Any]) -> list[str]:
 async def api_rate_limiter(request: Request, call_next):
     global _RATE_LIMIT_BLOCKED_TOTAL
 
-    path = request.url.path
+    path = request.scope["path"]
     if not path.startswith("/api/"):
         return await call_next(request)
 
@@ -1108,7 +1108,7 @@ async def api_rate_limiter(request: Request, call_next):
 
 @app.middleware("http")
 async def api_auth_guard(request: Request, call_next):
-    path = request.url.path
+    path = request.scope["path"]
     method = request.method.upper()
     req_id = _request_id(request)
 
