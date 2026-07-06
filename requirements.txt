@@ -1,6 +1,6 @@
 fastapi==0.136.3
 starlette>=1.0.1  # CVE-2026-48710 (BadHost) — do not downgrade below 1.0.1
-uvicorn[standard]==0.46.0
+uvicorn[standard]==0.50.0
 httpx==0.28.1
 pyyaml==6.0.3
 cachetools==7.1.1
