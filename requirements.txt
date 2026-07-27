@@ -3,7 +3,7 @@ starlette>=1.0.1  # CVE-2026-48710 (BadHost) — do not downgrade below 1.0.1
 uvicorn[standard]==0.46.0
 httpx==0.28.1
 pyyaml==6.0.3
-cachetools==7.1.1
+cachetools==7.1.6
 python-dotenv==1.2.2
 cryptography==47.0.0
 pywebpush==2.3.0  # pinned from >=2.3.0,<3; update after testing
