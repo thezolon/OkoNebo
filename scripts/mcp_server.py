@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 try:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server import CacheHint, MCPServer
 except Exception as exc:  # pragma: no cover - optional runtime
     raise SystemExit(
         "Missing MCP runtime. Install extras with: pip install -r requirements-mcp.txt"
@@ -26,7 +26,28 @@ except Exception as exc:  # pragma: no cover - optional runtime
 BASE_URL = os.getenv("OKONEBO_BASE_URL", "http://localhost:8888").rstrip("/")
 AGENT_TOKEN = os.getenv("OKONEBO_AGENT_TOKEN", "").strip()
 
-mcp = FastMCP("okonebo-weather")
+# Protocol revision 2026-07-28 is stateless: there is no initialize handshake, so
+# servers identify themselves in each result's _meta instead. name/title/version
+# are the source of that serverInfo and are no longer cosmetic.
+mcp = MCPServer(
+    "okonebo-weather",
+    title="OkoNebo Weather",
+    version=os.getenv("OKONEBO_VERSION", "1.5.0"),
+    website_url="https://github.com/thezolon/OkoNebo",
+    instructions=(
+        "Read-only access to an OkoNebo weather station. Tools proxy the "
+        "OkoNebo HTTP API for current conditions, forecasts, alerts, METAR, "
+        "tides and personal weather station data."
+    ),
+    # The tool catalog is fixed at import — no tools are added or removed at
+    # runtime — so let clients and shared intermediaries cache it. The SDK
+    # default is ttl_ms=0/private, i.e. no caching at all. Only the catalog is
+    # cached here; weather readings come from tools/call, which is never cached.
+    cache_hints={
+        "tools/list": CacheHint(ttl_ms=3_600_000, scope="public"),
+        "server/discover": CacheHint(ttl_ms=3_600_000, scope="public"),
+    },
+)
 
 
 def _headers() -> dict[str, str]:

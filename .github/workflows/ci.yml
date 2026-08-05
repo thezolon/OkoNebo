@@ -60,12 +60,19 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-mcp.txt
 
       - name: Syntax check (py_compile)
         run: |
           python -m py_compile app/main.py app/weather_client.py
           for f in scripts/*.py; do python -m py_compile "$f"; done
+
+      # py_compile does not exercise imports, so an incompatible mcp release
+      # would otherwise pass CI while breaking the adapter at runtime.
+      - name: MCP adapter smoke test
+        run: python scripts/mcp_smoke.py
 
       - name: Markdown link check
         run: python scripts/check_markdown_links.py
@@ -127,3 +134,30 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker rm -f weatherapp-ci || true
+
+  # Branch protection on main requires a status check named exactly "ci". GitHub
+  # reports check names per job, not per workflow, so no job here matched that
+  # name and every PR stayed BLOCKED regardless of its results. This aggregate
+  # job supplies it, and stays valid if the jobs above are ever renamed.
+  #
+  # `needs` alone is not enough: a skipped or cancelled dependency still counts
+  # as "not failed", so the result of each one is asserted explicitly.
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    needs: [scripts-cross-platform, test, docker]
+    if: always()
+
+    steps:
+      - name: Verify all required jobs succeeded
+        run: |
+          echo "scripts-cross-platform: ${{ needs.scripts-cross-platform.result }}"
+          echo "test:                   ${{ needs.test.result }}"
+          echo "docker:                 ${{ needs.docker.result }}"
+          if [ "${{ needs.scripts-cross-platform.result }}" != "success" ] \
+            || [ "${{ needs.test.result }}" != "success" ] \
+            || [ "${{ needs.docker.result }}" != "success" ]; then
+            echo "::error::One or more required CI jobs did not succeed"
+            exit 1
+          fi
+          echo "All required CI jobs succeeded"
