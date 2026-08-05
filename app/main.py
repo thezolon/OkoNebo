@@ -900,6 +900,91 @@ def _ha_threat_level(alerts: list[dict[str, Any]]) -> tuple[str, str, int]:
     return ("normal", max_severity, len(alerts))
 
 
+# A slow provider used to cost the whole chain: providers were tried strictly one
+# after another, so four degraded upstreams stacked their timeouts and the browser
+# aborted long before the last one was reached. Hedging instead starts the preferred
+# provider alone and only brings in the next if it has not answered within
+# PROVIDER_HEDGE_DELAY_SEC.
+#
+# Deliberately hedged rather than a full parallel fan-out: most of these providers
+# are paid or quota-limited, and firing all of them on every request would multiply
+# upstream cost even when the primary is perfectly healthy. With hedging, a healthy
+# primary that answers in 300ms means no secondary is ever called.
+PROVIDER_HEDGE_DELAY_SEC = 1.5
+
+# Whole-chain ceiling, comfortably inside the browser's 20s abort (app.js).
+PROVIDER_DEADLINE_SEC = 8.0
+
+
+def _first_successful(tasks: list[tuple[str, "asyncio.Task[Any]"]]) -> Any | None:
+    """Highest-priority completed success, or None. Preference is list order."""
+    for _, task in tasks:
+        if not task.done() or task.cancelled():
+            continue
+        try:
+            result = task.result()
+        except Exception:
+            continue
+        if result is not None:
+            return result
+    return None
+
+
+async def _fetch_hedged(
+    endpoint: str,
+    candidates: list[tuple[str, Callable[[], Awaitable[Any]]]],
+    attempted: list[str],
+    provider_errors: dict[str, str],
+) -> Any | None:
+    """Try *candidates* in preference order, overlapping them rather than queueing.
+
+    Returns the highest-priority successful payload, or None if every candidate
+    failed or the deadline elapsed. Latency is bounded by the slowest single
+    provider rather than the sum of them all.
+    """
+    if not candidates:
+        return None
+
+    tasks: list[tuple[str, asyncio.Task[Any]]] = []
+    deadline = time.monotonic() + PROVIDER_DEADLINE_SEC
+    next_index = 0
+
+    try:
+        while True:
+            if next_index < len(candidates):
+                pid, fetcher = candidates[next_index]
+                tasks.append(
+                    (pid, asyncio.create_task(_provider_attempt(endpoint, pid, fetcher, attempted, provider_errors)))
+                )
+                next_index += 1
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+
+            # Wake either when something finishes or when it is time to hedge.
+            more_to_launch = next_index < len(candidates)
+            slice_timeout = min(PROVIDER_HEDGE_DELAY_SEC, remaining) if more_to_launch else remaining
+            await asyncio.wait(
+                [task for _, task in tasks],
+                timeout=slice_timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            winner = _first_successful(tasks)
+            if winner is not None:
+                return winner
+
+            if not more_to_launch and all(task.done() for _, task in tasks):
+                break  # Everything ran and nothing succeeded.
+    finally:
+        for _, task in tasks:
+            if not task.done():
+                task.cancel()
+
+    return _first_successful(tasks)
+
+
 async def _provider_attempt(
     endpoint: str,
     provider_id: str,
@@ -1985,38 +2070,34 @@ async def _current_payload_for_location(lat: float, lon: float) -> dict[str, Any
     attempted: list[str] = []
     provider_errors: dict[str, str] = {}
 
+    candidates: list[tuple[str, Callable[[], Awaitable[Any]]]] = []
+
     if PROVIDERS.get("nws", {}).get("enabled"):
-        payload = await _provider_attempt("current", "nws", lambda: wc.get_current(lat, lon, USER_AGENT), attempted, provider_errors)
-        if payload is not None:
-            return payload
+        candidates.append(("nws", lambda: wc.get_current(lat, lon, USER_AGENT)))
 
     if PROVIDERS.get("weatherapi", {}).get("enabled"):
         weatherapi_key = _provider_api_key("weatherapi")
         if weatherapi_key:
-            payload = await _provider_attempt("current", "weatherapi", lambda: wc.get_weatherapi_current(lat, lon, weatherapi_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
+            candidates.append(("weatherapi", lambda: wc.get_weatherapi_current(lat, lon, weatherapi_key)))
 
     if PROVIDERS.get("tomorrow", {}).get("enabled"):
         tomorrow_key = _provider_api_key("tomorrow")
         if tomorrow_key:
-            payload = await _provider_attempt("current", "tomorrow", lambda: wc.get_tomorrow_current(lat, lon, tomorrow_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
+            candidates.append(("tomorrow", lambda: wc.get_tomorrow_current(lat, lon, tomorrow_key)))
 
     if PROVIDERS.get("visualcrossing", {}).get("enabled"):
         visualcrossing_key = _provider_api_key("visualcrossing")
         if visualcrossing_key:
-            payload = await _provider_attempt("current", "visualcrossing", lambda: wc.get_visualcrossing_current(lat, lon, visualcrossing_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
+            candidates.append(("visualcrossing", lambda: wc.get_visualcrossing_current(lat, lon, visualcrossing_key)))
 
     if PROVIDERS.get("meteomatics", {}).get("enabled"):
         meteomatics_key = _provider_api_key("meteomatics")
         if meteomatics_key and ":" in meteomatics_key:
-            payload = await _provider_attempt("current", "meteomatics", lambda: wc.get_meteomatics_current(lat, lon, meteomatics_key), attempted, provider_errors)
-            if payload is not None:
-                return payload
+            candidates.append(("meteomatics", lambda: wc.get_meteomatics_current(lat, lon, meteomatics_key)))
+
+    payload = await _fetch_hedged("current", candidates, attempted, provider_errors)
+    if payload is not None:
+        return payload
 
     details = {
         "detail": "No enabled/working current-conditions provider",
