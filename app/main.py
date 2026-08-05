@@ -23,6 +23,7 @@ import re
 import secrets
 import time
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, available_timezones
 
 import httpx
@@ -1338,12 +1339,45 @@ def _push_vapid_subject() -> str:
     return raw.strip() or "mailto:okonebo@localhost"
 
 
+# Push subscription is necessarily unauthenticated: the viewer registers itself
+# and viewer login is optional by default. That made it an outbound amplifier --
+# any https URL could be registered, and the server POSTs to every stored
+# endpoint each time a severe alert fires. Constrain what may be registered
+# instead of who may register, since only real push services are ever valid here.
+_PUSH_ENDPOINT_ALLOWED_HOSTS = (
+    "android.googleapis.com",       # legacy GCM
+    "fcm.googleapis.com",           # Chrome / Android
+    "updates.push.services.mozilla.com",  # Firefox
+    "push.services.mozilla.com",
+    "notify.windows.com",           # Edge / WNS (subdomains)
+    "push.apple.com",               # Safari (subdomains)
+)
+
+# A self-hosted station serves a household, not a userbase.
+MAX_PUSH_SUBSCRIPTIONS = 50
+
+
+def _is_allowed_push_endpoint(endpoint: str) -> bool:
+    try:
+        parsed = urlparse(endpoint)
+    except Exception:
+        return False
+    if parsed.scheme != "https" or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower()
+    return any(host == allowed or host.endswith("." + allowed) for allowed in _PUSH_ENDPOINT_ALLOWED_HOSTS)
+
+
 def _sanitize_push_subscription(payload: dict[str, Any]) -> dict[str, Any]:
     endpoint = str(payload.get("endpoint") or "").strip()
     if not endpoint:
         raise HTTPException(status_code=400, detail="subscription endpoint is required")
-    if not endpoint.startswith("https://"):
-        raise ValueError("Push subscription endpoint must use https://")
+    # Was a bare ValueError, which surfaced as a 500 rather than a 400.
+    if not _is_allowed_push_endpoint(endpoint):
+        raise HTTPException(
+            status_code=400,
+            detail="subscription endpoint must be an https URL from a recognised push service",
+        )
 
     raw_keys = payload.get("keys")
     keys: dict[str, Any] = raw_keys if isinstance(raw_keys, dict) else {}
@@ -1731,6 +1765,20 @@ async def api_push_subscribe(payload: dict[str, Any] = Body(...)):
             break
 
     if not updated:
+        if len(subscriptions) >= MAX_PUSH_SUBSCRIPTIONS:
+            # Without a cap the encrypted store grows without bound and every
+            # severe alert fans out to more endpoints.
+            _log_event(
+                "push.subscribe_rejected",
+                None,
+                level="warning",
+                reason="subscription_limit_reached",
+                limit=MAX_PUSH_SUBSCRIPTIONS,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=f"Subscription limit reached ({MAX_PUSH_SUBSCRIPTIONS}). Remove unused subscriptions first.",
+            )
         subscriptions.append({**subscription, "created_at": now, "updated_at": now})
 
     _save_push_subscriptions(subscriptions)
