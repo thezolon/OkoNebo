@@ -19,10 +19,10 @@ from app.content_safety import (
 
 class SmugglingRemovalTests(unittest.TestCase):
     def test_zero_width_characters_are_stripped_and_reported(self):
-        text = "Tornado​Warning‍ in effect"
+        text = "Tornado\u200bWarning\u200d in effect"
         cleaned, flags = sanitize_text(text)
-        self.assertNotIn("​", cleaned)
-        self.assertNotIn("‍", cleaned)
+        self.assertNotIn("\u200b", cleaned)
+        self.assertNotIn("\u200d", cleaned)
         self.assertIn("invisible_characters", flags)
 
     def test_unicode_tag_characters_are_stripped(self):
@@ -33,8 +33,8 @@ class SmugglingRemovalTests(unittest.TestCase):
         self.assertIn("invisible_characters", flags)
 
     def test_bidi_overrides_are_stripped(self):
-        cleaned, flags = sanitize_text("Rain ‮txet desrever‬ today")
-        self.assertNotIn("‮", cleaned)
+        cleaned, flags = sanitize_text("Rain \u202e txet desrever\u202c today")
+        self.assertNotIn("\u202e", cleaned)
         self.assertIn("invisible_characters", flags)
 
     def test_template_tokens_are_neutralised_not_deleted(self):

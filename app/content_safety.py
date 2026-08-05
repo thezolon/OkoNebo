@@ -65,14 +65,18 @@ DEFAULT_TRUST = "unknown"
 
 # Characters with no legitimate role in weather text, routinely used to hide
 # payloads from human reviewers while remaining visible to a model.
+# Written as escape sequences rather than literals on purpose. Embedding real
+# bidi controls in a source file is itself a trojan-source hazard -- bandit's
+# B613 flags exactly that -- and it would make this module an instance of the
+# problem it exists to detect.
 _INVISIBLE_CHARS = re.compile(
     "["
-    "​-‏"      # zero-width space/joiners, LTR/RTL marks
-    "‪-‮"      # bidirectional overrides
-    "⁠-⁤"      # word joiner, invisible operators
-    "⁦-⁩"      # isolates
-    "﻿"             # BOM / zero-width no-break space
-    "\U000e0000-\U000e007f"  # Unicode tag characters
+    "\\u200b-\\u200f"           # zero-width space/joiners, LTR/RTL marks
+    "\\u202a-\\u202e"           # bidirectional embeddings and overrides
+    "\\u2060-\\u2064"           # word joiner, invisible operators
+    "\\u2066-\\u2069"           # directional isolates
+    "\\ufeff"                   # BOM / zero-width no-break space
+    "\\U000e0000-\\U000e007f"   # Unicode tag characters
     "]"
 )
 
