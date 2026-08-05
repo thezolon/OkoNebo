@@ -883,6 +883,12 @@ function alertBannerTone(alert) {
 
 function alertBannerLabel(alert, tone) {
     const event = String(alert?.event || '').trim();
+    // The test alert carries a real event name ("Tornado Warning"). The card marks
+    // it with a pill, but the ticker is the loudest thing on screen and must never
+    // be mistakable for a live warning — on a wall display nobody sees the card.
+    if (alert?.synthetic) {
+        return event && event.length <= 26 ? `TEST — ${event.toUpperCase()}` : 'TEST ALERT';
+    }
     if (event && event.length <= 32) return event.toUpperCase();
     if (tone === 'warning') return 'ACTIVE WARNING';
     if (tone === 'watch') return 'ACTIVE WATCH';
@@ -1331,6 +1337,7 @@ function renderAlertPolygons() {
                 severity: alert.severity,
                 urgency: alert.urgency,
                 expires: alert.expires,
+                instruction: alert.instruction,
                 areas_affected: alert.areas_affected,
                 monitored_locations: alert.monitored_locations || [],
                 synthetic: !!alert.synthetic,
@@ -1350,10 +1357,16 @@ function renderAlertPolygons() {
                 ? `<div>Monitoring: ${props.monitored_locations.map(escapeHtml).join(', ')}</div>`
                 : '';
             const synthetic = props.synthetic ? '<div>Test polygon</div>' : '';
+            // The NWS instruction is the "what to do now" text. It leads the popup,
+            // above the descriptive metadata, for the same reason it leads the card.
+            const instruction = props.instruction
+                ? `<div class="alert-instruction">${escapeHtml(props.instruction)}</div>`
+                : '';
             layer.bindPopup(`
                 <div style="min-width:220px">
                     <strong>${escapeHtml(props.event || props.headline || 'Alert')}</strong>
                     <div>${escapeHtml(props.severity || 'Unknown severity')}</div>
+                    ${instruction}
                     ${urgency}
                     ${expires}
                     ${monitored}
@@ -2374,16 +2387,24 @@ function updateAlertTicker(alerts) {
         return;
     }
 
-    const topAlert = alerts
+    // A synthetic alert must never borrow a real alert's styling or headline. When
+    // anything real is active the banner speaks for that alert at full urgency and
+    // the test is demoted to the scrolling list; only when the test is alone does
+    // the banner take the neutral test tone.
+    const realAlerts = alerts.filter((a) => !a.synthetic);
+    const banner = realAlerts.length ? realAlerts : alerts;
+    const topAlert = banner
         .map((alert) => ({ alert, tone: alertBannerTone(alert) }))
         .sort((a, b) => alertBannerPriority(b.tone) - alertBannerPriority(a.tone))[0];
 
-    ticker.className = `alert-ticker ${topAlert.tone}`;
+    const tone = realAlerts.length ? topAlert.tone : 'test';
+    ticker.className = `alert-ticker ${tone}`;
     tickerLabel.textContent = alertBannerLabel(topAlert.alert, topAlert.tone);
     document.getElementById('ticker-text').textContent = alerts
         .map((a) => {
             const expires = a.expires ? `, expires ${formatTime(a.expires)}` : '';
-            return `${a.event || a.headline || 'Alert'}${expires}`;
+            const prefix = a.synthetic ? 'TEST — ' : '';
+            return `${prefix}${a.event || a.headline || 'Alert'}${expires}`;
         })
         .join(' | ');
     shell.classList.add('has-ticker');
@@ -2575,6 +2596,7 @@ async function renderAlerts(forceFetch = false) {
             </div>
             ${monitoredLocations.length ? `<div class="alert-coverage">Affects ${monitoredLocations.map(escapeHtml).join(' · ')}</div>` : ''}
             ${alert.synthetic ? '<div class="alert-test-pill">Test polygon</div>' : ''}
+            ${alert.instruction ? `<div class="alert-instruction">${escapeHtml(alert.instruction)}</div>` : ''}
             ${alert.description ? `<div class="alert-desc">${escapeHtml(alert.description)}</div>` : ''}
         `;
         card.addEventListener('click', () => {

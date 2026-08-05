@@ -101,6 +101,9 @@ html.admin-page body.admin-page {
 .alert-ticker.statement { background: linear-gradient(90deg, #2a4b5c 0%, #3e738d 100%); }
 .alert-ticker.outlook { background: linear-gradient(90deg, #34514b 0%, #4d7a70 100%); }
 .alert-ticker.info { background: linear-gradient(90deg, #164167 0%, #2d6ca3 100%); }
+/* Test alerts only. Deliberately flat and desaturated so a synthetic alert can
+   never be mistaken for a real one at a glance across a room. */
+.alert-ticker.test { background: #2f3a4a; }
 .alert-ticker.hidden { display: none; }
 .ticker-label {
     flex-shrink: 0;
@@ -875,6 +878,31 @@ html.admin-page body.admin-page {
     margin-bottom: 3px;
 }
 .alert-meta { font-size: 10px; color: var(--t2); display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* The NWS instruction — the "what to do now" text. It is the most actionable
+   content in the card, so it outranks the description: full primary-text color,
+   larger than any other body copy here, and never clamped or collapsed. */
+.alert-instruction {
+    margin-top: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--t1);
+    font-weight: 500;
+    background: rgba(240, 82, 82, 0.10);
+    border: 1px solid rgba(240, 82, 82, 0.35);
+    border-radius: var(--radius-sm);
+    white-space: pre-line;
+}
+.alert-card.moderate .alert-instruction {
+    background: rgba(245, 197, 24, 0.10);
+    border-color: rgba(245, 197, 24, 0.35);
+}
+.alert-card.minor .alert-instruction,
+.alert-card.synthetic .alert-instruction {
+    background: rgba(91, 158, 244, 0.10);
+    border-color: rgba(91, 158, 244, 0.35);
+}
 .alert-desc {
     font-size: 10px;
     color: var(--t2);
@@ -1272,6 +1300,14 @@ html.admin-page body.admin-page {
 
 /* ── Leaflet overrides ───────────────────────────────────────────────────── */
 .leaflet-container { background: #0a1520; }
+/* Leaflet popups keep their default light chrome, so the instruction block needs
+   a dark foreground here rather than the app's light-on-dark --t1. */
+.leaflet-popup-content .alert-instruction {
+    color: #24303f;
+    background: rgba(240, 82, 82, 0.12);
+    border-color: rgba(200, 40, 40, 0.45);
+    margin-top: 6px;
+}
 .leaflet-control-zoom a {
     background: var(--bg-2) !important;
     color: var(--t1) !important;
