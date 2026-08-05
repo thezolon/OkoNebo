@@ -42,7 +42,20 @@ _CACHE_RUNTIME_STATS: dict[str, int] = {
     "singleflight_wait": 0,
     "refresh": 0,
     "refresh_error": 0,
+    # Requests answered from an expired entry while a refresh ran off the request
+    # path. A healthy instance shows some of these; a large and growing count
+    # means upstreams are persistently slow or failing.
+    "stale_served": 0,
 }
+
+# Strong references to in-flight background refreshes (asyncio holds only weak
+# ones, so an unreferenced task can be collected before it completes).
+_BACKGROUND_REFRESH_TASKS: set[asyncio.Task[None]] = set()
+
+# Hard ceiling on how old a served-stale reading may be, whatever the key's TTL.
+# Beyond this the caller waits for a real fetch rather than being shown weather
+# that no longer describes the sky.
+STALE_WHILE_REVALIDATE_CAP_SEC = 3600.0
 
 PROVIDER_PULL_CYCLE_DEFAULTS: dict[str, int] = {
     "nws": 300,
@@ -221,6 +234,26 @@ class HybridTTLCache:
         except Exception:
             return None
 
+    async def get_stale_within(self, key: str, max_stale_seconds: float) -> Optional[Any]:
+        """Stale value, but only while it is recent enough to still mean something.
+
+        The in-memory store never evicts, so plain get_stale() can hand back an
+        arbitrarily old reading. That is fine as a last resort when an upstream is
+        erroring, but not as the routine answer to an expired key -- a temperature
+        from days ago must not be presented as current. The SQLite tier enforces
+        its own TTL, so only the memory tier needs the bound.
+        """
+        async with self._lock:
+            entry = self._store.get(key)
+            if entry is not None and (time.monotonic() - entry.expires_at) <= max_stale_seconds:
+                _CACHE_RUNTIME_STATS["stale_hit"] += 1
+                return entry.value
+
+        try:
+            return self._db.get(key, threat_level="default")
+        except Exception:
+            return None
+
     async def set(self, key: str, value: Any, ttl: float, cache_type: str = "default"):
         """
         Store to both memory and SQLite.
@@ -282,9 +315,14 @@ def _get_http_client(client_key: str, headers: dict[str, str] | None = None) -> 
     if client is not None:
         return client
 
+    # The browser aborts an API call after 20s (app.js), so the whole server-side
+    # budget has to fit well inside that. At the old flat 15s a single upstream
+    # call could burn 15s x 3 attempts ~= 46s, and /api/current chains three of
+    # them before it even reaches the next provider -- so the client always hung
+    # up first and the panel rendered empty. Keep per-attempt cost small instead.
     client = httpx.AsyncClient(
         headers=headers,
-        timeout=15,
+        timeout=httpx.Timeout(connect=3.05, read=6.0, write=6.0, pool=3.0),
         follow_redirects=True,
         limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
     )
@@ -369,16 +407,66 @@ async def _get(user_agent: str, url: str, retries: int = 3) -> dict:
     )
 
 
+async def _refresh_into_cache(
+    key: str,
+    cache_type: str,
+    ttl: float,
+    producer: Callable[[], Awaitable[Any]],
+) -> None:
+    """Refresh one key in the background. Never raises into the caller."""
+    refresh_lock = await _cache.get_refresh_lock(key)
+    if refresh_lock.locked():
+        return  # A refresh for this key is already in flight.
+    async with refresh_lock:
+        try:
+            _CACHE_RUNTIME_STATS["refresh"] += 1
+            value = await producer()
+            await _cache.set(key, value, ttl=_cache.effective_ttl(cache_type, int(ttl)), cache_type=cache_type)
+        except Exception:
+            # The stale value stays served until an attempt succeeds.
+            _CACHE_RUNTIME_STATS["refresh_error"] += 1
+
+
+def _spawn_background_refresh(
+    key: str,
+    cache_type: str,
+    ttl: float,
+    producer: Callable[[], Awaitable[Any]],
+) -> None:
+    task = asyncio.create_task(_refresh_into_cache(key, cache_type, ttl, producer))
+    # Hold a reference; asyncio only keeps weak ones and will otherwise collect
+    # the task mid-flight.
+    _BACKGROUND_REFRESH_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_REFRESH_TASKS.discard)
+
+
 async def _get_or_refresh_shared(
     key: str,
     cache_type: str,
     ttl: float,
     producer: Callable[[], Awaitable[Any]],
 ) -> Any:
-    """Single-flight cache refresh: one upstream fetch per key across concurrent requests."""
+    """Single-flight cache refresh: one upstream fetch per key across concurrent requests.
+
+    Stale-while-revalidate: once a key has ever been fetched successfully, requests
+    are answered from cache immediately and the refresh happens off the request
+    path. Previously an expired entry made the caller wait on the upstream, and on
+    a slow provider the browser's 20s abort fired first -- so the UI went blank
+    despite a perfectly good recent reading sitting in the cache. Only a genuinely
+    cold key blocks now.
+    """
     cached = await _cache.get(key, cache_type=cache_type)
     if cached is not None:
         return cached
+
+    # Bounded: serve an expired reading only while it is still meaningful. Past
+    # that we would rather make the caller wait than present old weather as now.
+    max_stale = min(max(float(ttl) * 6.0, 900.0), STALE_WHILE_REVALIDATE_CAP_SEC)
+    stale = await _cache.get_stale_within(key, max_stale)
+    if stale is not None:
+        _CACHE_RUNTIME_STATS["stale_served"] += 1
+        _spawn_background_refresh(key, cache_type, ttl, producer)
+        return stale
 
     refresh_lock = await _cache.get_refresh_lock(key)
     if refresh_lock.locked():
