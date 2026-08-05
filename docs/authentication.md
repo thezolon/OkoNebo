@@ -120,6 +120,27 @@ See [agents.md](agents.md) for the full agent token reference.
 | `VIEWER_PASSWORD` | *(none)* | Viewer account password |
 | `AUTH_TOKEN_SECRET` | auto-generated | HMAC secret for signing JWTs — set a strong random value in production |
 | `AUTH_TOKEN_EXPIRY_HOURS` | `24` | Token lifetime in hours |
+| `SETTINGS_ENCRYPTION_KEY` | *(see below)* | Encrypts `secure_settings.db`. **Set this**, or saved settings will not survive a restart |
 
 > **Security note:** Use a long random value for `AUTH_TOKEN_SECRET` in production. Changing it
 > invalidates all current sessions.
+
+> **Set `SETTINGS_ENCRYPTION_KEY`.** Everything saved through the admin UI — your location,
+> provider API keys, logins, and the push notification keypair — is encrypted at rest in
+> `secure_settings.db` with a key derived from this value.
+>
+> If it is not set, OkoNebo falls back to `auth.token_secret` from `config.yaml`, then to the
+> `AUTH_TOKEN_SECRET` environment variable. If none of those exist it generates a **random key for
+> that process only**, and everything you saved becomes unreadable the next time the app restarts —
+> silently replaced by defaults. The usual symptom is having to re-enter your location after
+> every restart. `GET /api/debug` reports `settings_persistent: false` when this is happening.
+>
+> Generate one once and keep it stable:
+>
+> ```bash
+> python -c "import secrets; print(secrets.token_hex(32))"
+> ```
+>
+> Changing it later makes existing saved settings unreadable, so treat it as permanent.
+> Prefer setting it explicitly rather than relying on the `AUTH_TOKEN_SECRET` fallback, so that
+> rotating your auth secret does not also discard your settings.

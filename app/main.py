@@ -307,15 +307,27 @@ def _env_bool(name: str, default: bool) -> bool:
 _settings_seed = (
     os.getenv("SETTINGS_ENCRYPTION_KEY")
     or str((_cfg.get("auth", {}) or {}).get("token_secret") or "")
+    # AUTH_TOKEN_SECRET is honoured here only as a last resort, and deliberately
+    # below the config-file value: an install that sets both must keep deriving
+    # the same key it always has, or its stored settings become unreadable.
+    # Without this fallback, the common setup of configuring the secret by
+    # environment rather than by config file left the store with no seed at all,
+    # so every restart minted a random key and silently discarded saved settings.
+    or str(os.getenv("AUTH_TOKEN_SECRET") or "")
 )
 if not _settings_seed:
     _settings_seed = secrets.token_hex(32)
-    LOGGER.warning(
-        "SECURITY WARNING: No SETTINGS_ENCRYPTION_KEY env var or auth.token_secret in config found. "
-        "A random encryption key has been generated for this process. "
-        "Secure settings will NOT be readable after restart. "
-        "Set SETTINGS_ENCRYPTION_KEY in your environment to persist encrypted settings across restarts."
+    LOGGER.error(
+        "SETTINGS WILL NOT PERSIST ACROSS RESTART. No SETTINGS_ENCRYPTION_KEY or "
+        "AUTH_TOKEN_SECRET is set and config.yaml has no auth.token_secret, so a "
+        "random encryption key was generated for this process only. Everything "
+        "saved through the admin UI -- location, provider API keys, logins, push "
+        "keys -- will be unreadable after the next restart and silently replaced "
+        "by defaults. Set SETTINGS_ENCRYPTION_KEY to a long random value to fix this."
     )
+    SETTINGS_PERSISTENCE_OK = False
+else:
+    SETTINGS_PERSISTENCE_OK = True
 SECURE_STORE = SecureSettingsStore(_CONFIG_PATH.parent / "secure_settings.db", key_seed=_settings_seed)
 
 
@@ -2883,6 +2895,11 @@ async def api_debug():
             "pws_station_count": len(PWS_STATIONS),
         },
         "upstream_calls": upstream_stats,
+        # False means no encryption seed was configured, so the settings store is
+        # keyed per-process and everything saved will be lost on the next restart.
+        # Surfaced here because a log line at boot is easy to miss, and the symptom
+        # (having to re-enter the location) looks like an unrelated UI bug.
+        "settings_persistent": SETTINGS_PERSISTENCE_OK,
         "rate_limit": {
             "window_seconds": RATE_LIMIT_WINDOW_SEC,
             "max_requests_per_window": RATE_LIMIT_MAX_PER_WINDOW,
@@ -2966,6 +2983,11 @@ def _support_bundle_payload() -> dict[str, Any]:
         "providers": provider_summary,
         "observability": observability,
         "upstream_calls": upstream_stats,
+        # False means no encryption seed was configured, so the settings store is
+        # keyed per-process and everything saved will be lost on the next restart.
+        # Surfaced here because a log line at boot is easy to miss, and the symptom
+        # (having to re-enter the location) looks like an unrelated UI bug.
+        "settings_persistent": SETTINGS_PERSISTENCE_OK,
         "rate_limit": {
             "window_seconds": RATE_LIMIT_WINDOW_SEC,
             "max_requests_per_window": RATE_LIMIT_MAX_PER_WINDOW,
