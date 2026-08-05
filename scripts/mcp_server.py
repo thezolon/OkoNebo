@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 try:
-    from mcp.server import MCPServer
+    from mcp.server import CacheHint, MCPServer
 except Exception as exc:  # pragma: no cover - optional runtime
     raise SystemExit(
         "Missing MCP runtime. Install extras with: pip install -r requirements-mcp.txt"
@@ -39,6 +39,14 @@ mcp = MCPServer(
         "OkoNebo HTTP API for current conditions, forecasts, alerts, METAR, "
         "tides and personal weather station data."
     ),
+    # The tool catalog is fixed at import — no tools are added or removed at
+    # runtime — so let clients and shared intermediaries cache it. The SDK
+    # default is ttl_ms=0/private, i.e. no caching at all. Only the catalog is
+    # cached here; weather readings come from tools/call, which is never cached.
+    cache_hints={
+        "tools/list": CacheHint(ttl_ms=3_600_000, scope="public"),
+        "server/discover": CacheHint(ttl_ms=3_600_000, scope="public"),
+    },
 )
 
 
