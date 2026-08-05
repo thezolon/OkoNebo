@@ -12,29 +12,69 @@
 | Dependabot triage + MCP migration | `requirements*.txt`, `scripts/mcp_server.py`, CI | Done — PR #102 |
 | Impeccable audit + critique (dual-agent) | `app/static/**` — 9061 lines | Done — `.impeccable/critique/2026-08-05T14-29-00Z__app-static.md` |
 | Alert-safety fixes | `app.js`, `style.css` alert paths | Done — PR #103 |
-| **Backend review** | `app/main.py` (3478L, 53 routes), `weather_client.py` (2473L), `cache_db.py`, `secure_settings.py`, `redaction.py`, `astro.py` | **Not started — Phase 2** |
+| Reliability diagnosis + fix | `weather_client.py` cache/timeout path | Done — PR #105 |
+| Backend review — auth, tokens, crypto, cache, redaction | `main.py` auth surface, `secure_settings.py`, `cache_db.py`, `redaction.py` | Done — see Phase 2 findings |
+| **Backend review — remainder** | rest of `weather_client.py` (2473L), `astro.py`, input validation across ~40 more routes | **Outstanding** |
 
-**Honest gap:** roughly half the codebase (the Python backend) has not been reviewed. Phase 2 exists to close that, and its findings will likely add work to Phases 3–5. Treat item counts below as a floor, not a total.
+**Honest gap:** the backend review is partially complete. The auth/crypto/cache/redaction pass is done and its findings are recorded in Phase 2; the remaining routes and provider code are not yet reviewed, so item counts below remain a floor rather than a total.
 
 **Scores at baseline:** design 19/40 (Poor) · technical audit 7/20 (Poor).
 
 ---
 
+## Decisions taken (2026-08-05)
+
+These were open questions at the end of the first draft. All are now settled and the plan below reflects them.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Branch-protection review requirement | The maintainer is the checkpoint. GitHub cannot express "approve your own PR", so required approvals moved 1 → 0 while **keeping** the required `ci` check, `strict` up-to-date enforcement, and the no-force-push/no-delete rules. Merging is a two-party agreement in conversation, not a GitHub approval click. `--admin` is *not* routine — it would bypass CI as well as review. |
+| 2 | METAR and tides | **Render them**, as an optional user-selectable layer/choice rather than always-on. |
+| 3 | Visual redesign vs mechanical fixes | *"Attractive, but form must follow function. If the data isn't good, making it look pretty means nothing."* → correctness, reliability and accessibility land **before** any visual pass. The visual work is then scoped as "make the fixed thing attractive", not "redesign the broken thing". |
+| 4 | Backend review depth | **Full sweep**, not just auth/crypto. |
+| 5 | The two monolith refactors | **Yes** — they are justified as v2 preparation. |
+
+**Framing change:** the target is a **v2 release**, not maintenance. That is why the refactors are in scope.
+
+**Direction added:** *"I am a fan of multiple sources that are aggregated."* — see Phase R.
+
+---
+
+## Phase R — Data availability and reliability  *(highest priority)*
+
+Promoted above everything else by decision #3's own logic: a blank panel **is** the data not being good, so it outranks making anything look better. This is also the defect actually experienced in daily use.
+
+**Diagnosis (measured, not inferred).** The viewer's empty current-conditions panel was a timeout budget mismatch. The browser aborts at 20s (`app.js:2097`); server-side, httpx allowed 15s per attempt × 3 attempts ≈ 46s per upstream call, `/api/current` chains three of those (~140s), and only then falls back **sequentially** through four more providers (~186s). The client always hung up first. Worse, `_get_or_refresh_shared` already had a serve-stale-on-error path — but it only ran *after* the upstream attempts finished, so the safety net was unreachable in exactly the scenario it was built for.
+
+| # | Item | Status |
+|---|---|---|
+| R.1 | Bound per-attempt cost (connect 3.05s / read 6s / write 6s / pool 3s) | Done — PR #105 |
+| R.2 | Stale-while-revalidate: serve the cached reading immediately, refresh off the request path | Done — PR #105 |
+| R.3 | Bound stale age (6× TTL, floor 15 min, hard cap 1 hour) so old weather is never presented as current | Done — PR #105 |
+| R.4 | **Parallel provider fan-out** replacing the sequential fallback chain — first good answer wins, blend when several return | **To do — the main aggregation work** |
+| R.5 | Per-provider circuit breaker: skip recently-failed sources so a down provider stops costing latency. Telemetry to drive it already exists (`_track_provider_outcome`, retry stats) | To do |
+| R.6 | Hard per-endpoint server deadline, comfortably inside the client abort | To do |
+| R.7 | Surface freshness honestly in the UI when a served-stale value is shown (the per-source age grid already exists for this) | To do |
+
+R.4 is the substantive delivery of what the UI already promises: **"Auto Blend" is the default source in the viewer today**, while the backend merely fails over one provider at a time. Sequential failover means more sources make the app *slower*; parallel aggregation means more sources make it *more reliable*.
+
+**Effort:** R.4–R.6 are M–L. **Risk:** medium — touches the request path; needs the existing provider-fallback tests kept green.
+
+---
+
 ## Phase 0 — Unblock the merge pipeline
 
-Nothing else can land until this is resolved. This is the root cause of the nine-PR Dependabot backlog, and it is a repo-settings problem, not a code problem.
+**Status: complete.** The Dependabot backlog is cleared and zero PRs remain open.
 
-| # | Item | Notes |
+| # | Item | Outcome |
 |---|---|---|
-| 0.1 | Decide the review requirement | `required_approving_review_count: 1` + solo repo = **you cannot approve your own PRs**. Options: drop to 0, add a second reviewer/bot, or accept `--admin` override as routine. |
-| 0.2 | Land PR #102 | Deps + MCP v2 + aggregate `ci` job. All 6 checks green. |
-| 0.3 | Land PR #103 | Alert-safety P0s. |
-| 0.4 | Merge #95, #88 | Dependabot Actions bumps, clean and conflict-free. |
-| 0.5 | Close #101, #100, #98, #96, #85, #99 as superseded by #102; close #84 as superseded by #101 | Reference the superseding PR in each close comment. |
+| 0.1 | Review requirement | Resolved per decision #1 — approvals 1 → 0, `ci` check and `strict` retained |
+| 0.2 | PR #102 | Merged — deps + MCP v2 + aggregate `ci` job |
+| 0.3 | PR #103 | Merged — alert-safety P0s |
+| 0.4 | #95, #88 | Merged — Actions bumps |
+| 0.5 | #101, #100, #98, #96, #85, #99, #84 | Closed as superseded, each with a stated reason |
 
-The aggregate `ci` job in #102 already fixes the "required check that never reports" half of the gate. 0.1 is the remaining half.
-
-**Blocks:** everything. **Effort:** S.
+Root cause, for the record: branch protection required a status check named `ci`, but GitHub reports check names per **job**, and no job carried that name — so the required context was never reported and every PR sat `BLOCKED` no matter how green it was. #102 added an aggregate `ci` job that depends on the other three and asserts each result explicitly (`needs` alone is insufficient — with `if: always()` a skipped dependency would otherwise pass).
 
 ---
 
@@ -79,9 +119,27 @@ The unreviewed half. This is a review phase; it produces findings, then a fix ba
 | `cache_db.py` | SQL construction, concurrent access from the cache-warm loop. |
 | **Anti-AI-poisoning** | Standing project requirement. Alert text, METAR, and firewatch descriptions are untrusted upstream content rendered into the UI and exposed via MCP tools to agent runtimes. Provenance and injection screening need to exist on that path. |
 
-**Method:** targeted review per area with `/security-review` on the auth surface, findings tagged P0–P3 with file:line, then a fix batch.
+**Method:** targeted review per area, findings tagged P0–P3 with file:line, then a fix batch.
 
-**Effort:** L. **Risk:** unknown until done — this phase exists to convert unknown risk into known items.
+### Findings so far (auth / tokens / crypto / cache / redaction — complete)
+
+**Verified sound, no action:** PBKDF2-SHA256 at 120k rounds with per-user salts and `compare_digest`; HMAC token signatures verified *before* the payload is parsed; agent-token revocation durable across restart (reloaded at `main.py:434`); a dedicated login brute-force limiter (10 / 5 min / IP) on top of the global one; webhooks properly admin-gated at handler level via `_require_admin_identity`; `cache_db.py` fully parameterised (its one `# nosec B608` interpolates only generated `?` placeholders) with WAL mode and a thread lock; `redaction.py` thorough and installed after `basicConfig`; **all provider base URLs are hardcoded constants** with query values passed through httpx `params=`, and lat/lon coerced via `_safe_float` — so there is no SSRF-via-config surface.
+
+| # | Finding | Sev |
+|---|---|---|
+| 2.1 | **Push subscribe/unsubscribe are unauthenticated.** `api_push_subscribe` (`main.py:1634`) does not take `request` and so cannot check identity; it is absent from `admin_only`, and `AUTH_REQUIRE_VIEWER_LOGIN` defaults to False. Only validation is `startswith("https://")`. Enables outbound amplification (the server POSTs to every stored endpoint on each severe alert), unbounded store growth, and — worst — **silent alert suppression**, since anyone knowing a real subscriber's endpoint can unsubscribe them. | P1 |
+| 2.2 | **Settings encryption key is not KDF-derived.** `secure_settings.py:22` is a single unsalted SHA-256 of the seed. The seed is a hand-set env var, so a human passphrase is the likely input, making the Fernet key offline-brute-forceable from the DB file — which holds provider API keys, password hashes and the VAPID private key. `_hash_password` in the same codebase does this correctly; the technique just was not applied here. Needs a migration path. | P1 |
+| 2.3 | **Anti-poisoning: absent.** Grep across `app/*.py` and `scripts/mcp_server.py` for injection screening, provenance or untrusted-content handling returns **zero hits**. Alert text, METAR, PWS station names and firewatch descriptions flow upstream → UI *and* → MCP tools verbatim. XSS is handled (`escapeHtml`); prompt injection is not. Violates the standing project requirement, and the MCP path makes it concrete. | P1 |
+| 2.4 | Rate limiting defeated behind a reverse proxy — keys on `request.client.host` with no proxy-header handling anywhere. All clients share one bucket. | P2 |
+| 2.5 | `_RATE_LIMIT_BUCKETS` (`defaultdict(deque)`) never evicts keys; reading creates them. Slow unbounded growth. | P2 |
+| 2.6 | No response size limit on `resp.json()`; only connection limits are set. | P3 |
+| 2.7 | `_sanitize_push_subscription` raises bare `ValueError` for non-https → 500 instead of 400. | P3 |
+| 2.8 | `station_id` from the NWS response interpolated unencoded into a URL path (`weather_client.py:458`). Upstream-controlled, fixed host, low impact. | P3 |
+| 2.9 | `_derive_key`'s hardcoded `"weatherapi-default-key"` fallback is currently unreachable from `main.py` but is a latent footgun for other callers. | P3 |
+
+**Remaining to review:** the rest of `weather_client.py`, `astro.py`, input-validation coverage across the other ~40 routes.
+
+**Effort:** L. **Risk:** partially converted from unknown to known.
 
 ---
 
@@ -147,7 +205,7 @@ The detector is the small half of this. The real finding was the **design specif
 |---|---|---|
 | 5.1 | **Move System Status + Ops Timeline to admin** *(decided)* | Retry pressure, cache pressure, flap counts and upstream call totals are operator telemetry in a viewer whose user wants to know if it will rain. Reclaims the right rail. |
 | 5.2 | **Persist all viewer preferences** *(decided — treated as a bug)* | Units, radar provider, overlay, opacity, speed, alert/forecast filters, refresh interval. Panel collapse already persists; inconsistent persistence is worse than none. |
-| 5.3 | Render METAR and tides, or drop them | Both are configurable providers in first-run *and* admin with **zero rendering surface in the viewer** — while Retry Pressure gets a dedicated tile. This is the single clearest symptom of "composition follows what the backend emits." |
+| 5.3 | **Render METAR and tides as an optional user-selectable layer** *(decided)* | Both are configurable providers in first-run *and* admin with **zero rendering surface in the viewer** — while Retry Pressure gets a dedicated tile. The clearest symptom of "composition follows what the backend emits". Decision #2: build them as an opt-in layer/choice rather than always-on, so they earn space only when wanted. |
 | 5.4 | Explain or remove "Storm: Elevated" | A locally-invented weighted index displayed as a peer to the NWS/OWM/PWS provenance dots, explained in no tooltip, no help page, nowhere. Either document it in-UI or stop giving it NWS-level authority. |
 | 5.5 | Document Auto Blend | It is the *default* source, and its precedence rules appear nowhere in the UI. |
 | 5.6 | Remove hardcoded `PWS_NAMES` | `{KOKPRAGU20:'ZNewHouse', KOKPRAGU2:'ZOldHouse'}` — the author's own station nicknames in shipped source. Every other user sees raw station IDs. Add a settings field. |
