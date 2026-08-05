@@ -324,8 +324,11 @@ class PushNotificationTests(unittest.IsolatedAsyncioTestCase):
         existing = main.SECURE_STORE.get_json(main._PUSH_SUBSCRIPTIONS_STORE_KEY, None)
         try:
             main.SECURE_STORE.delete(main._PUSH_SUBSCRIPTIONS_STORE_KEY)
+            # Must be a real push-service host: registration is restricted to
+            # recognised services so the endpoint list cannot be used as an
+            # outbound amplifier. See tests/test_push_subscription_hardening.py.
             payload = {
-                "endpoint": "https://example.test/push/123",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/123",
                 "keys": {"p256dh": "abc", "auth": "def"},
             }
             subscribed = await main.api_push_subscribe(payload)
