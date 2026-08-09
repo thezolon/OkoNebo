@@ -3,6 +3,8 @@ Lightweight SQLite cache for weather data with adaptive TTLs.
 Reduces API calls by caching responses with different retention policies based on threat level.
 """
 
+import logging
+import os
 import sqlite3
 import json
 import threading
@@ -120,6 +122,18 @@ ACTIVE_STORM_TTL = {
 }
 
 
+LOGGER = logging.getLogger('okonebo')
+
+# How long observed metrics are kept for historical plotting. Was 48 hours,
+# hard-coded, which meant "plot it over time" could never mean more than two
+# days. At roughly one row per provider every five minutes, a month of history
+# is on the order of tens of thousands of rows -- unremarkable for SQLite.
+HISTORY_RETENTION_DAYS = int(os.getenv("OKONEBO_HISTORY_RETENTION_DAYS") or 30)
+HISTORY_RETENTION_SEC = max(1, HISTORY_RETENTION_DAYS) * 86400
+# Pruning on every single write was pure overhead; hourly is ample.
+HISTORY_PRUNE_INTERVAL_SEC = 3600
+
+
 class WeatherCache:
     """SQLite cache with adaptive TTLs based on weather threat level."""
 
@@ -127,7 +141,8 @@ class WeatherCache:
         self.db_path = Path(db_path)
         self._ttl_overrides: Dict[str, int] = {}
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self._last_history_prune = 0
+        self._conn = self._connect()
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._init_db()
 
@@ -177,8 +192,50 @@ class WeatherCache:
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_history_key ON history(key)")
             self._conn.commit()
 
+
+    def _connect(self) -> sqlite3.Connection:
+        """Open the cache, rebuilding it if the file is corrupt.
+
+        This is a cache: every row can be refetched, so a malformed file is not
+        worth preserving. Rebuilding beats the previous behaviour, where a
+        corrupt database silently rejected every write while the in-memory tier
+        kept the app looking healthy and history recorded nothing for months.
+
+        Order matters. quick_check must run before PRAGMA journal_mode, because
+        setting the journal mode on a damaged file touches the header and the
+        check then reports clean on a database that still raises "disk image is
+        malformed" on the first real statement.
+        """
+        conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        try:
+            result = conn.execute("PRAGMA quick_check").fetchone()
+            if result and str(result[0]).lower() != "ok":
+                raise sqlite3.DatabaseError(f"quick_check reported: {result[0]}")
+            return conn
+        except sqlite3.DatabaseError as exc:
+            LOGGER.warning("cache database unusable (%s); rebuilding %s", exc, self.db_path)
+
+        try:
+            conn.close()
+        except Exception:
+            pass
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                Path(str(self.db_path) + suffix).unlink(missing_ok=True)
+            except OSError:
+                pass
+        return sqlite3.connect(str(self.db_path), check_same_thread=False)
+
     def _should_record_history(self, cache_type: str) -> bool:
-        return str(cache_type).startswith("current_")
+        """Record measurements, not predictions.
+
+        Forecast payloads are deliberately excluded: keeping every past forecast
+        would grow without bound and say more about the model than the weather.
+        Observations, station readings and air quality are the series worth
+        plotting over time.
+        """
+        kind = str(cache_type)
+        return kind.startswith(("current_", "pws_", "aqi_"))
 
     def _get_ttl(self, cache_type: str, threat_level: str = "default") -> int:
         """Get TTL in seconds based on threat level."""
@@ -203,10 +260,14 @@ class WeatherCache:
                     "INSERT INTO history (key, cache_type, data, timestamp) VALUES (?, ?, ?, ?)",
                     (key, cache_type, json_data, timestamp),
                 )
-                self._conn.execute(
-                    "DELETE FROM history WHERE timestamp < ?",
-                    (timestamp - 172800,),
-                )
+                # Pruning ran on every write with a hard-coded 48-hour window,
+                # which made long-range plotting impossible by construction.
+                if timestamp - self._last_history_prune >= HISTORY_PRUNE_INTERVAL_SEC:
+                    self._conn.execute(
+                        "DELETE FROM history WHERE timestamp < ?",
+                        (timestamp - HISTORY_RETENTION_SEC,),
+                    )
+                    self._last_history_prune = timestamp
             self._conn.commit()
 
     def get(self, key: str, cache_type: str = "default", threat_level: str = "default") -> Optional[Dict[str, Any]]:
@@ -261,8 +322,8 @@ class WeatherCache:
         if not clean_keys:
             return []
 
-        safe_hours = max(1, min(int(hours), 24))
-        safe_limit = max(1, min(int(limit), 2000))
+        safe_hours = max(1, min(int(hours), HISTORY_RETENTION_DAYS * 24))
+        safe_limit = max(1, min(int(limit), 20000))
         cutoff = int(time.time()) - (safe_hours * 3600)
         placeholders = ", ".join("?" for _ in clean_keys)
         query = (

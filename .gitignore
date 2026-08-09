@@ -10,6 +10,8 @@ dist/
 config.yaml
 cache.db
 cache.db-*
+# SQLite databases now live together so WAL sidecars stay beside them
+data/
 secure_settings.db
 secure_settings.db-*
 *.log
