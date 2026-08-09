@@ -14,6 +14,7 @@ const state = {
     radarBoomerang: false,
     owmOverlay: 'none',
     hourlyView: 'chart',
+    chartSeries: null,   // assigned once its storage helpers are defined below
     pwsTrendHours: 3,
     currentSourceIndex: 0,
     showAlertPolygons: true,
@@ -93,6 +94,35 @@ const SERVER_DEBUG_REFRESH_MS = 45000;
 const iemState = { times: [] };
 const CURRENT_SOURCE_STORAGE_KEY = 'weatherapp.currentSourceKey';
 const PANEL_COLLAPSE_STORAGE_KEY = 'weatherapp.panelCollapse';
+const CHART_SERIES_STORAGE_KEY = 'weatherapp.chartSeries';
+
+// Default view stays the three measured readings. Derived series are opt-in, so
+// the chart does not decide for you that an estimate deserves your attention.
+const DEFAULT_CHART_SERIES = { temp: true, precip: true, humidity: true, surface: false, dogrisk: false };
+
+function loadChartSeries() {
+    try {
+        const raw = window.localStorage.getItem(CHART_SERIES_STORAGE_KEY);
+        if (!raw) return { ...DEFAULT_CHART_SERIES };
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_CHART_SERIES };
+        // Merge over defaults so a stored value from an older build cannot
+        // remove a series that exists now.
+        return { ...DEFAULT_CHART_SERIES, ...parsed };
+    } catch (err) {
+        return { ...DEFAULT_CHART_SERIES };
+    }
+}
+
+function saveChartSeries(series) {
+    try {
+        window.localStorage.setItem(CHART_SERIES_STORAGE_KEY, JSON.stringify(series));
+    } catch (err) {
+        /* storage unavailable; selection simply will not persist */
+    }
+}
+
+state.chartSeries = loadChartSeries();
 const DEFAULT_WEATHER_ICON = `data:image/svg+xml,${encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs><rect width="64" height="64" rx="8" fill="url(#bg)"/><circle cx="22" cy="24" r="10" fill="#fde68a"/><g fill="#ffffff"><ellipse cx="37" cy="38" rx="16" ry="10"/><ellipse cx="27" cy="39" rx="9" ry="7"/></g></svg>'
 )}`;
@@ -3104,6 +3134,74 @@ function buildLocationImpactMarkers(hourlyPeriods, alerts) {
     return markers;
 }
 
+
+// Contiguous runs of elevated canine heat risk, drawn as background shading so
+// the chart answers "when is the window" without adding another line to read.
+function buildCanineRiskBands(hours) {
+    const bands = [];
+    let start = null;
+    let level = null;
+    hours.forEach((h, index) => {
+        const risk = h.canine_risk;
+        const elevated = risk === 'caution' || risk === 'danger';
+        if (elevated && level === risk) return;
+        if (start !== null) { bands.push({ start, end: index, level }); start = null; level = null; }
+        if (elevated) { start = index; level = risk; }
+    });
+    if (start !== null) bands.push({ start, end: hours.length - 1, level });
+    return bands;
+}
+
+const canineRiskPlugin = {
+    id: 'canineRiskBands',
+    beforeDatasetsDraw(chart, args, opts) {
+        const bands = opts?.bands || [];
+        if (!bands.length) return;
+        const { ctx, chartArea, scales } = chart;
+        const xScale = scales.x;
+        if (!xScale || !chartArea) return;
+        ctx.save();
+        bands.forEach((band) => {
+            const x0 = xScale.getPixelForValue(band.start);
+            const x1 = xScale.getPixelForValue(band.end);
+            ctx.fillStyle = band.level === 'danger' ? 'rgba(240,82,82,0.13)' : 'rgba(245,197,24,0.10)';
+            ctx.fillRect(x0, chartArea.top, Math.max(x1 - x0, 1), chartArea.bottom - chartArea.top);
+        });
+        ctx.restore();
+    },
+};
+
+// Series selection chips. Persisted, because a preference that resets on every
+// reload is worse than no preference at all.
+function initChartSeriesToggles() {
+    const group = document.getElementById('series-toggles');
+    if (!group) return;
+    const note = document.getElementById('series-note');
+
+    const sync = () => {
+        group.querySelectorAll('.series-chip').forEach((chip) => {
+            const on = !!state.chartSeries[chip.dataset.series];
+            chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        if (note) {
+            const derivedOn = state.chartSeries.surface || state.chartSeries.dogrisk;
+            note.classList.toggle('hidden', !derivedOn);
+        }
+    };
+
+    group.querySelectorAll('.series-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+            const key = chip.dataset.series;
+            state.chartSeries[key] = !state.chartSeries[key];
+            saveChartSeries(state.chartSeries);
+            sync();
+            if (state.hourlyView === 'chart') renderHourlyChart(false);
+        });
+    });
+
+    sync();
+}
+
 async function renderHourlyChart(forceFetch = false) {
     if (forceFetch || cache.hourly.length === 0) {
         const payload = await fetchAPIDeduped('/hourly');
@@ -3117,6 +3215,10 @@ async function renderHourlyChart(forceFetch = false) {
     // and plotting a missing reading as zero would invent a dry hour.
     const humidity = cache.hourly.map((h) => (h.humidity == null ? null : Number(h.humidity)));
     const hasHumidity = humidity.some((v) => v != null);
+    const surface = cache.hourly.map((h) => (h.surface_temp_f == null ? null : Number(h.surface_temp_f)));
+    const hasSurface = surface.some((v) => v != null);
+    const series = state.chartSeries || DEFAULT_CHART_SERIES;
+    const riskBands = series.dogrisk ? buildCanineRiskBands(cache.hourly) : [];
     const impactMarkers = buildLocationImpactMarkers(cache.hourly.slice(0, 48), getEffectiveAlerts());
     const dayBoundaries = buildDayBoundaryMarkers(cache.hourly);
 
@@ -3140,11 +3242,11 @@ async function renderHourlyChart(forceFetch = false) {
 
     chartInstance = new Chart(ctx, {
         type: 'line',
-        plugins: [locationImpactPlugin, dayBoundaryPlugin],
+        plugins: [locationImpactPlugin, dayBoundaryPlugin, canineRiskPlugin],
         data: {
             labels,
             datasets: [
-                {
+                ...(series.temp ? [{
                     label: `Temp (°${state.units.toUpperCase()})`,
                     data: temps,
                     borderColor: '#4a9eff',
@@ -3154,8 +3256,8 @@ async function renderHourlyChart(forceFetch = false) {
                     pointRadius: 1,
                     tension: 0.35,
                     yAxisID: 'yTemp',
-                },
-                {
+                }] : []),
+                ...(series.precip ? [{
                     label: 'Precip %',
                     data: pops,
                     borderColor: '#3dd68c',
@@ -3165,12 +3267,12 @@ async function renderHourlyChart(forceFetch = false) {
                     pointRadius: 0,
                     tension: 0.35,
                     yAxisID: 'yPop',
-                },
+                }] : []),
                 // Humidity shares the precipitation axis: both are percentages, and a
                 // third scale would cost more chart width than the reading is worth.
                 // Drawn unfilled and dashed so it reads as background context rather
                 // than competing with the two series you act on.
-                ...(hasHumidity ? [{
+                ...(series.humidity && hasHumidity ? [{
                     label: 'Humidity %',
                     data: humidity,
                     borderColor: '#b08cff',
@@ -3181,6 +3283,22 @@ async function renderHourlyChart(forceFetch = false) {
                     tension: 0.35,
                     spanGaps: true,
                     yAxisID: 'yPop',
+                }] : []),
+                // Estimated surface temperature. Shares the temperature axis
+                // because it is a temperature, and sits well above the air line
+                // by design -- that gap is the whole point.
+                ...(series.surface && hasSurface ? [{
+                    label: 'Surface* (°F)',
+                    data: surface,
+                    borderColor: '#ff9f80',
+                    backgroundColor: 'rgba(255,159,128,0.08)',
+                    borderWidth: 1.5,
+                    borderDash: [2, 2],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0.35,
+                    spanGaps: true,
+                    yAxisID: 'yTemp',
                 }] : []),
             ],
         },
@@ -3197,6 +3315,7 @@ async function renderHourlyChart(forceFetch = false) {
                     boundaries: dayBoundaries,
                     nowIndex: nowFractionalIndex,
                 },
+                canineRiskBands: { bands: riskBands },
             },
             scales: {
                 x: { ticks: { color: '#4a6278', maxRotation: 0, font: { size: 9 } }, grid: { color: '#1b2537' } },
@@ -4426,6 +4545,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     setupControls();
     initCollapsiblePanels();
+    initChartSeriesToggles();
     setupTimelineFilters();
     const compactPanelLayoutBtn = document.getElementById('compact-panel-layout-btn');
     if (compactPanelLayoutBtn) {

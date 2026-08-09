@@ -12,6 +12,8 @@ from typing import Any, Awaitable, Callable, Optional
 
 import httpx
 
+from app import comfort
+
 from . import cache_db
 from .redaction import redact_text
 
@@ -655,11 +657,15 @@ async def get_hourly(lat: float, lon: float, user_agent: str) -> list[dict]:
                 "icon":           p["icon"],
                 "precip_percent": p.get("probabilityOfPrecipitation", {}).get("value"),
                 "humidity":       p.get("relativeHumidity", {}).get("value"),
+                "is_daytime":     p.get("isDaytime", True),
             }
             for p in periods
         ]
 
-    return await _get_or_refresh_shared(key, cache_type="hourly_nws", ttl=900, producer=_producer)
+    rows = await _get_or_refresh_shared(key, cache_type="hourly_nws", ttl=900, producer=_producer)
+    # Derived, not measured -- see app/comfort.py. Applied after the cache so a
+    # tuning change takes effect without waiting out the cached payload.
+    return [comfort.annotate_hour(dict(r), lat, lon) for r in rows]
 
 
 async def get_alerts(lat: float, lon: float, user_agent: str) -> list[dict]:
