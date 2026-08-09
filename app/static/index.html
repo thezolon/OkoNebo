@@ -15,10 +15,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
           integrity="sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb"
           crossorigin="anonymous" />
-    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
-    <div id="alert-ticker" class="alert-ticker hidden">
+    <div id="alert-ticker" class="alert-ticker hidden" role="alert" aria-live="assertive" aria-atomic="true">
         <span id="ticker-label" class="ticker-label">ACTIVE ALERT</span>
         <div class="ticker-track"><span id="ticker-text"></span></div>
     </div>
@@ -63,16 +63,16 @@
                 <span id="owm-dot" class="src-dot dot-loading" title="OpenWeather One Call">OWM</span>
                 <span id="pws-dot" class="src-dot dot-loading" title="Personal Weather Stations">PWS</span>
                 <span id="storm-index" class="storm-index low">Storm: Low</span>
-                <span id="status-pill" class="status-pill loading">Loading</span>
+                <span id="status-pill" class="status-pill loading" role="status" aria-live="polite">Loading</span>
             </div>
 
             <div class="source-carousel">
-                <button id="source-prev-btn" class="source-nav-btn" title="Previous source">&lt;-</button>
+                <button id="source-prev-btn" class="source-nav-btn" aria-label="Previous data source" title="Previous source">&lt;-</button>
                 <div class="source-carousel-center">
                     <div class="source-carousel-kicker">Current Source</div>
                     <div id="source-carousel-label" class="source-carousel-label">Auto Blend</div>
                 </div>
-                <button id="source-next-btn" class="source-nav-btn" title="Next source">-&gt;</button>
+                <button id="source-next-btn" class="source-nav-btn" aria-label="Next data source" title="Next source">-&gt;</button>
             </div>
 
             <div class="source-age-grid" id="source-age-grid">
@@ -98,7 +98,7 @@
                     <label><input id="alert-layer-flood" type="checkbox" checked> Flood</label>
                     <label><input id="alert-layer-thunderstorm" type="checkbox" checked> Thunderstorm</label>
                 </div>
-                <div id="alerts-container" class="alerts-container">
+                <div id="alerts-container" class="alerts-container" aria-live="polite" aria-relevant="additions text">
                     <div class="no-alerts">No active alerts</div>
                 </div>
             </section>
@@ -297,7 +297,7 @@
                         <button id="compact-panel-layout-btn" class="map-btn debug-btn" type="button" title="Collapse or expand utility panels">Compact</button>
                         <button id="reset-panel-layout-btn" class="map-btn debug-btn" type="button" title="Reset panel layout">Reset Layout</button>
                         <button id="debug-report-btn" class="map-btn debug-btn" type="button">Sync</button>
-                        <button id="toggle-debug-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
+                        <button id="toggle-debug-section" class="panel-toggle" type="button" aria-expanded="false" aria-label="Expand System Status" title="Expand System Status"><span aria-hidden="true">▸</span></button>
                     </div>
                 </div>
                 <div class="panel-sec-body">
@@ -322,7 +322,7 @@
             <section class="panel-sec" id="admin-section" data-default-collapsed="true">
                 <div class="panel-sec-hdr">
                     <h3>Admin</h3>
-                    <button id="toggle-admin-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
+                    <button id="toggle-admin-section" class="panel-toggle" type="button" aria-expanded="false" aria-label="Expand Admin" title="Expand Admin"><span aria-hidden="true">▸</span></button>
                 </div>
                 <div class="panel-sec-body">
                 <p class="pws-meta">Setup, auth, and AI agent tokens now live on a dedicated admin page.</p>
@@ -338,7 +338,7 @@
             <section class="panel-sec" id="viewer-help-section" data-default-collapsed="true">
                 <div class="panel-sec-hdr">
                     <h3>Viewer Help</h3>
-                    <button id="toggle-viewer-help-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
+                    <button id="toggle-viewer-help-section" class="panel-toggle" type="button" aria-expanded="false" aria-label="Expand Viewer Help" title="Expand Viewer Help"><span aria-hidden="true">▸</span></button>
                 </div>
                 <div class="panel-sec-body">
                 <p class="pws-meta">Need a quick tour of the dashboard? Open the in-app viewer guide.</p>
@@ -352,7 +352,7 @@
                 <div class="panel-sec-hdr">
                     <h3>Ops Timeline</h3>
                     <span id="timeline-meta" class="pws-meta">latest events</span>
-                    <button id="toggle-timeline-section" class="panel-toggle" type="button" aria-expanded="false" title="Expand section">▸</button>
+                    <button id="toggle-timeline-section" class="panel-toggle" type="button" aria-expanded="false" aria-label="Expand Ops Timeline" title="Expand Ops Timeline"><span aria-hidden="true">▸</span></button>
                 </div>
                 <div class="panel-sec-body">
                 <div style="margin-bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap;">
@@ -381,7 +381,7 @@
         </aside>
     </div>
 
-    <div id="error-toast" class="error-toast hidden"></div>
+    <div id="error-toast" class="error-toast hidden" role="status" aria-live="polite"></div>
 
     <div id="auth-modal" class="auth-modal hidden">
         <div class="auth-modal-card">
@@ -463,6 +463,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"
             integrity="sha384-9MhbyIRcBVQiiC7FSd7T38oJNj2Zh+EfxS7/vjhBi4OOT78NlHSnzM31EZRWR1LZ"
             crossorigin="anonymous"></script>
-    <script src="js/app.js?v=11"></script>
+    <script src="js/app.js?v=12"></script>
 </body>
 </html>

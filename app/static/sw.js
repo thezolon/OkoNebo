@@ -1,9 +1,9 @@
-const CACHE_NAME = 'okonebo-static-v11';
+const CACHE_NAME = 'okonebo-static-v12';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/css/style.css?v=8',
-  '/js/app.js?v=11',
+  '/css/style.css?v=9',
+  '/js/app.js?v=12',
   '/okonebo-icon.svg',
   '/okonebo-icon-192.svg',
   '/okonebo-icon-512.svg',
