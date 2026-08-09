@@ -153,7 +153,11 @@ AGENT_PROFILE_VERSION = "1.0"
 _VALID_TIMEZONES = available_timezones()
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
 _LABEL_RE = re.compile(r"^[\w\s\-.,()&'/:]{1,100}$")
-APP_VERSION = str(os.getenv("OKONEBO_VERSION") or os.getenv("APP_VERSION") or "1.3.0").strip() or "1.3.0"
+from app import __version__ as _PACKAGE_VERSION
+
+APP_VERSION = str(
+    os.getenv("OKONEBO_VERSION") or os.getenv("APP_VERSION") or _PACKAGE_VERSION
+).strip() or _PACKAGE_VERSION
 APP_BUILD = str(os.getenv("OKONEBO_BUILD") or os.getenv("APP_BUILD") or "").strip()
 _LOG_LEVEL = str(os.getenv("LOG_LEVEL") or "INFO").upper()
 logging.basicConfig(level=getattr(logging, _LOG_LEVEL, logging.INFO), format="%(message)s")
