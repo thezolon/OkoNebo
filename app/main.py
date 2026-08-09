@@ -52,6 +52,28 @@ except Exception:  # pragma: no cover - optional dependency in older installs
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
 
+# SQLite databases live in their own directory rather than beside config.yaml.
+# cache_db runs in WAL mode, which needs to create <db>-wal and <db>-shm next to
+# the database file. Bind-mounting the .db files individually left those two in
+# the container's writable layer, so every recreate discarded uncommitted WAL
+# contents -- which is how the cache database ended up malformed, with the host
+# copy untouched for months. Mounting a directory keeps the whole set together.
+DATA_DIR = Path(os.getenv("OKONEBO_DATA_DIR") or (_CONFIG_PATH.parent / "data"))
+
+
+def _resolve_db_path(filename: str) -> Path:
+    """Prefer the data directory, but adopt an existing file left beside
+    config.yaml so an upgrade does not silently start from empty."""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return _CONFIG_PATH.parent / filename
+    in_data = DATA_DIR / filename
+    legacy = _CONFIG_PATH.parent / filename
+    if not in_data.exists() and legacy.exists():
+        return legacy
+    return in_data
+
 if load_dotenv is not None:
     load_dotenv(_CONFIG_PATH.parent / ".env")
 
@@ -332,7 +354,7 @@ if not _settings_seed:
     SETTINGS_PERSISTENCE_OK = False
 else:
     SETTINGS_PERSISTENCE_OK = True
-SECURE_STORE = SecureSettingsStore(_CONFIG_PATH.parent / "secure_settings.db", key_seed=_settings_seed)
+SECURE_STORE = SecureSettingsStore(_resolve_db_path("secure_settings.db"), key_seed=_settings_seed)
 
 
 def _hash_password(password: str, salt: str | None = None) -> str:
@@ -2314,7 +2336,7 @@ async def api_forecast():
     ),
     tags=["Weather"],
 )
-async def api_history(hours: int = Query(default=6, ge=1, le=24)):
+async def api_history(hours: int = Query(default=6, ge=1, le=720)):
     return await wc.get_current_history(LAT, LON, hours=hours)
 
 

@@ -4,8 +4,11 @@ Uses in-memory cache for speed + SQLite for persistence across restarts with ada
 """
 
 import asyncio
+import logging
 import math
+import os
 import random
+from pathlib import Path
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Optional
@@ -35,6 +38,8 @@ _UPSTREAM_CALL_STATS: dict[str, int] = {
     "pws_history": 0,
 }
 _RETRY_RUNTIME_STATS: dict[str, dict[str, int]] = {}
+LOGGER = logging.getLogger('okonebo')
+
 _CACHE_RUNTIME_STATS: dict[str, int] = {
     "memory_hit": 0,
     "sqlite_hit": 0,
@@ -48,7 +53,12 @@ _CACHE_RUNTIME_STATS: dict[str, int] = {
     # path. A healthy instance shows some of these; a large and growing count
     # means upstreams are persistently slow or failing.
     "stale_served": 0,
+    "db_write_error": 0,
 }
+
+# Most recent SQLite failure, surfaced through /api/debug so a dead persistence
+# tier is visible rather than inferred.
+_LAST_DB_ERROR: str | None = None
 
 # Strong references to in-flight background refreshes (asyncio holds only weak
 # ones, so an unreferenced task can be collected before it completes).
@@ -266,8 +276,15 @@ class HybridTTLCache:
 
         try:
             self._db.set(key, value, cache_type=cache_type, threat_level="default")
-        except Exception:
-            pass  # Non-fatal; memory cache is still valid
+        except Exception as exc:
+            # Was a bare pass. The SQLite tier stayed dead for months behind it:
+            # the memory cache kept answering, so nothing looked wrong, while
+            # history recorded nothing and no value survived a restart. Still
+            # non-fatal, but no longer silent.
+            _CACHE_RUNTIME_STATS["db_write_error"] += 1
+            global _LAST_DB_ERROR
+            _LAST_DB_ERROR = f"{type(exc).__name__}: {exc}"
+            LOGGER.warning("cache db write failed (%s); serving from memory only", _LAST_DB_ERROR)
 
     def set_threat_level(self, alerts: list[dict]):
         """
@@ -282,7 +299,23 @@ class HybridTTLCache:
         return self._db.stats()
 
 
-_cache = HybridTTLCache()
+def _default_cache_path() -> str:
+    """Mirror main._resolve_db_path without importing it (weather_client is
+    imported by main, so the dependency must not run the other way)."""
+    base = Path(__file__).parent.parent
+    data_dir = Path(os.getenv("OKONEBO_DATA_DIR") or (base / "data"))
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return str(base / "cache.db")
+    in_data = data_dir / "cache.db"
+    legacy = base / "cache.db"
+    if not in_data.exists() and legacy.exists():
+        return str(legacy)
+    return str(in_data)
+
+
+_cache = HybridTTLCache(_default_cache_path())
 
 
 def set_provider_pull_cycles(cycles: dict[str, Any] | None) -> dict[str, int]:
