@@ -2603,6 +2603,14 @@ async function renderAlerts(forceFetch = false) {
     filtered.forEach((alert) => {
         const card = document.createElement('div');
         card.className = `alert-card ${alertSevClass(alert.severity)}`;
+        // Clicking a card is the only way to read a warning past its clamp or zoom
+        // the map to it. As a bare div with a click handler that was unreachable by
+        // keyboard entirely -- so a keyboard or switch user could not open the body
+        // of a tornado warning.
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-expanded', 'false');
+        card.setAttribute('aria-label', `${alert.event || alert.headline || 'Alert'}. Activate to expand and locate on map.`);
         if (alert.synthetic) card.classList.add('synthetic');
         const monitoredLocations = Array.isArray(alert.monitored_locations) ? alert.monitored_locations : [];
         card.innerHTML = `
@@ -2617,8 +2625,9 @@ async function renderAlerts(forceFetch = false) {
             ${alert.instruction ? `<div class="alert-instruction">${escapeHtml(alert.instruction)}</div>` : ''}
             ${alert.description ? `<div class="alert-desc">${escapeHtml(alert.description)}</div>` : ''}
         `;
-        card.addEventListener('click', () => {
-            card.classList.toggle('expanded');
+        const activateCard = () => {
+            const expanded = card.classList.toggle('expanded');
+            card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
             if (alert.geometry) {
                 if (!state.showAlertPolygons) {
                     state.showAlertPolygons = true;
@@ -2627,6 +2636,14 @@ async function renderAlerts(forceFetch = false) {
                     renderAlertPolygons();
                 }
                 zoomToAlert(alert);
+            }
+        };
+        card.addEventListener('click', activateCard);
+        card.addEventListener('keydown', (event) => {
+            // Enter and Space are what role="button" promises the user.
+            if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+                event.preventDefault();
+                activateCard();
             }
         });
         container.appendChild(card);
