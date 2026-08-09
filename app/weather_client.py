@@ -640,6 +640,99 @@ async def get_forecast(lat: float, lon: float, user_agent: str) -> list[dict]:
     return await _get_or_refresh_shared(key, cache_type="forecast_nws", ttl=900, producer=_producer)
 
 
+PAST_HOURS_MAX = 24
+
+
+def _rh_from_dewpoint(temp_c: float | None, dewpoint_c: float | None) -> float | None:
+    """Relative humidity via the Magnus relation.
+
+    Many ASOS stations publish temperature and dewpoint but leave
+    relativeHumidity null, so deriving it recovers a series that would otherwise
+    be missing. Returns None when either input is absent -- an invented humidity
+    would be worse than a gap.
+    """
+    if temp_c is None or dewpoint_c is None:
+        return None
+    numerator = math.exp((17.625 * dewpoint_c) / (243.04 + dewpoint_c))
+    denominator = math.exp((17.625 * temp_c) / (243.04 + temp_c))
+    if denominator == 0:
+        return None
+    return round(max(0.0, min(100.0, 100.0 * numerator / denominator)), 1)
+
+
+async def get_past_hourly(lat: float, lon: float, user_agent: str, hours: int = 12) -> list[dict]:
+    """Observed conditions for the last *hours* hours, bucketed to the hour.
+
+    The forecast begins at the current hour, which puts "now" hard against the
+    left edge of the chart and hides the run-up to it. These are real station
+    observations, not back-cast forecast, and are marked is_past so a consumer
+    can tell measurement from prediction.
+
+    Stations report every few minutes, so each hour is represented by the
+    observation nearest that hour boundary. Fields the station does not publish
+    stay None rather than being filled in.
+    """
+    safe_hours = max(1, min(int(hours), PAST_HOURS_MAX))
+    key = f"past-hourly:{lat},{lon}:{safe_hours}"
+
+    async def _producer() -> list[dict]:
+        point = await _resolve_point(lat, lon, user_agent)
+        base = str(point["station_url"]).rsplit("/latest", 1)[0]
+        start = (datetime.now(timezone.utc) - timedelta(hours=safe_hours + 1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        raw = await _get(user_agent, f"{base}?start={start}")
+
+        buckets: dict[str, tuple[float, dict]] = {}
+        for feature in raw.get("features", []):
+            props = feature.get("properties") or {}
+            stamp = props.get("timestamp")
+            if not stamp:
+                continue
+            try:
+                when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            hour = when.replace(minute=0, second=0, microsecond=0)
+            distance = abs((when - hour).total_seconds())
+            existing = buckets.get(hour.isoformat())
+            # Keep whichever observation sits closest to the hour mark.
+            if existing is None or distance < existing[0]:
+                buckets[hour.isoformat()] = (distance, props)
+
+        def _val(obj):
+            return obj.get("value") if isinstance(obj, dict) else None
+
+        def _c_to_f(c):
+            return round(c * 9 / 5 + 32, 1) if c is not None else None
+
+        rows: list[dict] = []
+        for hour_iso in sorted(buckets):
+            props = buckets[hour_iso][1]
+            temp_c = _val(props.get("temperature"))
+            humidity = _val(props.get("relativeHumidity"))
+            if humidity is None:
+                humidity = _rh_from_dewpoint(temp_c, _val(props.get("dewpoint")))
+            wind_kmh = _val(props.get("windSpeed"))
+            rows.append(
+                {
+                    "start_time": hour_iso,
+                    "temp_f": _c_to_f(temp_c),
+                    "humidity": round(humidity, 1) if humidity is not None else None,
+                    # Probability of precipitation is a forecast quantity; an
+                    # observation cannot supply it, so it stays absent.
+                    "precip_percent": None,
+                    "wind_speed": f"{round(wind_kmh * 0.621371)} mph" if wind_kmh is not None else None,
+                    "wind_direction": _val(props.get("windDirection")),
+                    "short_forecast": props.get("textDescription"),
+                    "icon": props.get("icon"),
+                    "is_past": True,
+                }
+            )
+        return rows[-safe_hours:]
+
+    rows = await _get_or_refresh_shared(key, cache_type="hourly_nws", ttl=600, producer=_producer)
+    return [comfort.annotate_hour(dict(r), lat, lon) for r in rows]
+
+
 async def get_hourly(lat: float, lon: float, user_agent: str) -> list[dict]:
     key = f"hourly:{lat},{lon}"
 
