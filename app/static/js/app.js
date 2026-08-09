@@ -2216,6 +2216,17 @@ async function renderHeader(forceFetch = false) {
     renderTimeline();
 }
 
+// A tile reading "--" tells you nothing except that the app has a slot for
+// something. Where a value is genuinely unavailable from the selected source,
+// hide the tile instead of printing a placeholder; the markup already carried
+// ids like #gust-row and #uv-row implying exactly this, with nothing wired up.
+function setStatValue(valueId, value, rowId) {
+    const valueEl = document.getElementById(valueId);
+    if (valueEl) valueEl.textContent = value == null ? '--' : value;
+    const rowEl = rowId ? document.getElementById(rowId) : null;
+    if (rowEl) rowEl.classList.toggle('stat-empty', value == null);
+}
+
 async function renderCurrent(forceFetch = false) {
     if (forceFetch || !cache.current) cache.current = await fetchAPIDeduped('/current');
     cache.currentSources = buildCurrentSources();
@@ -2260,8 +2271,8 @@ async function renderCurrent(forceFetch = false) {
     document.getElementById('humidity').textContent = active.humidity != null ? `${Math.round(active.humidity)}%` : '--%';
     document.getElementById('wind-speed').textContent = displayWind(active.wind);
     document.getElementById('wind-dir').textContent = active.windDirDeg != null ? `${windDir(active.windDirDeg)} (${Math.round(active.windDirDeg)}°)` : '--';
-    document.getElementById('wind-gust').textContent = active.gust != null ? displayWind(active.gust) : '--';
-    document.getElementById('pressure').textContent = displayPressure(active.pressure);
+    setStatValue('wind-gust', active.gust != null ? displayWind(active.gust) : null, 'gust-row');
+    setStatValue('pressure', active.pressure != null ? displayPressure(active.pressure) : null, 'pressure-row');
     document.getElementById('visibility').textContent = active.visibility != null ? displayDist(active.visibility) : '--';
     document.getElementById('dewpoint').textContent = displayTemp(active.dewpoint);
     document.getElementById('current-station').textContent = active.station || '--';
@@ -2281,9 +2292,16 @@ async function renderCurrent(forceFetch = false) {
     icon.alt = active.description || 'Weather icon';
 
     document.getElementById('last-updated').textContent = active.timestamp ? `Updated ${formatTime(active.timestamp)}` : '--';
-    document.getElementById('uv-index').textContent = active.uv != null ? `${Number(active.uv).toFixed(1)}` : '--';
-    document.getElementById('sunrise').textContent = active.sunrise ? formatHM(active.sunrise) : '--';
-    document.getElementById('sunset').textContent = active.sunset ? formatHM(active.sunset) : '--';
+
+    // Only OpenWeather reports sun times on the current-conditions payload, so with
+    // NWS or a PWS selected these tiles sat permanently blank -- while the Astronomy
+    // panel showed the real values a few hundred pixels away. Same data, two places,
+    // one of them always empty. Fall back to the astro payload that is already cached.
+    const sunrise = active.sunrise || cache.astro?.sunrise || null;
+    const sunset = active.sunset || cache.astro?.sunset || null;
+    setStatValue('uv-index', active.uv != null ? Number(active.uv).toFixed(1) : null, 'uv-row');
+    setStatValue('sunrise', sunrise ? formatHM(sunrise) : null, 'sunrise-row');
+    setStatValue('sunset', sunset ? formatHM(sunset) : null, 'sunset-row');
 
     renderStormIndex();
     renderSourceAges();
