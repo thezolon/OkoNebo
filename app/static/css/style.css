@@ -569,6 +569,9 @@ html.admin-page body.admin-page {
 .hcell-icon { width: 28px; height: 28px; }
 .hcell-temp { font-size: 13px; font-weight: 600; color: var(--t1); }
 .hcell-pop  { font-size: 10px; color: var(--accent); }
+/* Matches the dashed humidity line in the chart view so the two views read as
+   the same data. --t2 rather than --t3: at 10px the muted tier fails contrast. */
+.hcell-rh   { font-size: 10px; color: var(--t2); }
 .hcell-wind { font-size: 9px; color: var(--t3); }
 .hidden { display: none !important; }
 

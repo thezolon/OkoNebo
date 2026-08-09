@@ -654,6 +654,7 @@ async def get_hourly(lat: float, lon: float, user_agent: str) -> list[dict]:
                 "short_forecast": p["shortForecast"],
                 "icon":           p["icon"],
                 "precip_percent": p.get("probabilityOfPrecipitation", {}).get("value"),
+                "humidity":       p.get("relativeHumidity", {}).get("value"),
             }
             for p in periods
         ]
@@ -1245,6 +1246,7 @@ async def get_weatherapi_hourly(lat: float, lon: float, api_key: str) -> list[di
                         "short_forecast": condition.get("text"),
                         "icon": _weatherapi_icon(str(condition.get("icon") or "")),
                         "precip_percent": hour.get("chance_of_rain"),
+                        "humidity": hour.get("humidity"),
                     }
                 )
 
@@ -1390,6 +1392,7 @@ async def get_tomorrow_hourly(lat: float, lon: float, api_key: str) -> list[dict
                     "short_forecast": _tomorrow_text(values.get("weatherCode")),
                     "icon": None,
                     "precip_percent": values.get("precipitationProbability"),
+                    "humidity": values.get("humidity"),
                 }
             )
 
@@ -1547,6 +1550,7 @@ async def get_visualcrossing_hourly(lat: float, lon: float, api_key: str) -> lis
                         "short_forecast": hour.get("conditions"),
                         "icon": _vc_icon(hour.get("icon")),
                         "precip_percent": hour.get("precipprob"),
+                        "humidity": hour.get("humidity"),
                     }
                 )
 
