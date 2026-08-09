@@ -3078,6 +3078,10 @@ async function renderHourlyChart(forceFetch = false) {
     const labels = cache.hourly.map((h) => formatHM(h.start_time));
     const temps = cache.hourly.map((h) => state.units === 'c' ? fToC(h.temp_f) : h.temp_f);
     const pops = cache.hourly.map((h) => h.precip_percent || 0);
+    // null rather than 0 where a provider omits humidity: 0% RH is a real value
+    // and plotting a missing reading as zero would invent a dry hour.
+    const humidity = cache.hourly.map((h) => (h.humidity == null ? null : Number(h.humidity)));
+    const hasHumidity = humidity.some((v) => v != null);
     const impactMarkers = buildLocationImpactMarkers(cache.hourly.slice(0, 48), getEffectiveAlerts());
     const dayBoundaries = buildDayBoundaryMarkers(cache.hourly);
 
@@ -3127,6 +3131,22 @@ async function renderHourlyChart(forceFetch = false) {
                     tension: 0.35,
                     yAxisID: 'yPop',
                 },
+                // Humidity shares the precipitation axis: both are percentages, and a
+                // third scale would cost more chart width than the reading is worth.
+                // Drawn unfilled and dashed so it reads as background context rather
+                // than competing with the two series you act on.
+                ...(hasHumidity ? [{
+                    label: 'Humidity %',
+                    data: humidity,
+                    borderColor: '#b08cff',
+                    borderWidth: 1.25,
+                    borderDash: [4, 3],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0.35,
+                    spanGaps: true,
+                    yAxisID: 'yPop',
+                }] : []),
             ],
         },
         options: {
@@ -3146,7 +3166,15 @@ async function renderHourlyChart(forceFetch = false) {
             scales: {
                 x: { ticks: { color: '#4a6278', maxRotation: 0, font: { size: 9 } }, grid: { color: '#1b2537' } },
                 yTemp: { position: 'left', ticks: { color: '#4a9eff', font: { size: 9 } }, grid: { color: '#1b2537' } },
-                yPop: { position: 'right', min: 0, max: 100, ticks: { color: '#3dd68c', font: { size: 9 } }, grid: { drawOnChartArea: false } },
+                // Neutral tick colour: this axis now carries both precipitation and
+                // humidity, so colouring it green would imply it belongs to precip alone.
+                yPop: {
+                    position: 'right',
+                    min: 0,
+                    max: 100,
+                    ticks: { color: '#7e99b8', font: { size: 9 }, callback: (v) => `${v}%` },
+                    grid: { drawOnChartArea: false },
+                },
             },
         },
     });
@@ -3169,6 +3197,7 @@ async function renderHourlyTable(forceFetch = false) {
             <img class="hcell-icon" src="${hIconSrc}" alt="${escapeHtml(h.short_forecast || '')}">
             <div class="hcell-temp">${displayTemp(h.temp_f)}</div>
             ${h.precip_percent != null ? `<div class="hcell-pop">${h.precip_percent}%</div>` : ''}
+            ${h.humidity != null ? `<div class="hcell-rh">${Math.round(h.humidity)}% RH</div>` : ''}
             <div class="hcell-wind">${displayWind(h.wind_speed)}</div>
         `;
         container.appendChild(cell);
