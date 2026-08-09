@@ -2319,6 +2319,27 @@ async def api_history(hours: int = Query(default=6, ge=1, le=24)):
 
 
 @app.get(
+    "/api/hourly/past",
+    summary="Recent observed hourly conditions",
+    description=(
+        "Observed conditions for the preceding hours, bucketed to the hour, so a "
+        "chart can show the run-up to now rather than starting at it. These are "
+        "station observations rather than forecast, marked is_past. Fields the "
+        "station does not publish are null rather than estimated -- probability "
+        "of precipitation in particular cannot exist for an observation."
+    ),
+    tags=["Weather"],
+)
+async def api_hourly_past(hours: int = Query(default=12, ge=1, le=24)):
+    try:
+        return await wc.get_past_hourly(LAT, LON, USER_AGENT, hours=hours)
+    except Exception as exc:
+        _log_event("hourly_past.failed", None, level="warning", error=redact_text(str(exc)))
+        # A missing history strip must never take the forecast chart down with it.
+        return []
+
+
+@app.get(
     "/api/hourly",
     summary="48-hour hourly forecast",
     description=(

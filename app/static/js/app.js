@@ -53,6 +53,7 @@ const cache = {
     multiCurrent: null,
     forecast: [],
     hourly: [],
+    hourlyPast: null,
     alerts: [],
     alertsViewport: [],
     firewatch: [],
@@ -3152,6 +3153,37 @@ function buildCanineRiskBands(hours) {
     return bands;
 }
 
+
+// The left portion of the chart is measurement, the right is prediction. Without
+// a boundary they read as one continuous series, which quietly overstates how
+// much of the line is known.
+const pastRegionPlugin = {
+    id: 'pastRegion',
+    beforeDatasetsDraw(chart, args, opts) {
+        const count = opts?.pastCount || 0;
+        if (!count) return;
+        const { ctx, chartArea, scales } = chart;
+        if (!scales.x || !chartArea) return;
+        const edge = scales.x.getPixelForValue(count - 0.5);
+        ctx.save();
+        ctx.fillStyle = 'rgba(126, 153, 184, 0.07)';
+        ctx.fillRect(chartArea.left, chartArea.top, edge - chartArea.left, chartArea.bottom - chartArea.top);
+        ctx.strokeStyle = 'rgba(126, 153, 184, 0.35)';
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(edge, chartArea.top);
+        ctx.lineTo(edge, chartArea.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(126, 153, 184, 0.85)';
+        ctx.font = '9px system-ui, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('observed', edge - 4, chartArea.top + 10);
+        ctx.restore();
+    },
+};
+
 const canineRiskPlugin = {
     id: 'canineRiskBands',
     beforeDatasetsDraw(chart, args, opts) {
@@ -3202,30 +3234,56 @@ function initChartSeriesToggles() {
     sync();
 }
 
+// Hours of observed conditions shown before "now". The forecast starts at the
+// current hour, which pinned the Now marker against the left edge and hid the
+// run-up to it. The total window is held steady by trimming the far end of the
+// forecast, which is the least useful part of a 48-hour view.
+const CHART_PAST_HOURS = 12;
+const CHART_TOTAL_HOURS = 48;
+
 async function renderHourlyChart(forceFetch = false) {
     if (forceFetch || cache.hourly.length === 0) {
         const payload = await fetchAPIDeduped('/hourly');
         cache.hourly = Array.isArray(payload) ? payload : (cache.hourly || []);
     }
+    if (forceFetch || cache.hourlyPast == null) {
+        try {
+            const past = await fetchAPIDeduped(`/hourly/past?hours=${CHART_PAST_HOURS}`);
+            cache.hourlyPast = Array.isArray(past) ? past : [];
+        } catch (err) {
+            // History is a nicety; the forecast must still draw without it.
+            cache.hourlyPast = [];
+        }
+    }
 
-    const labels = cache.hourly.map((h) => formatHM(h.start_time));
-    const temps = cache.hourly.map((h) => state.units === 'c' ? fToC(h.temp_f) : h.temp_f);
-    const pops = cache.hourly.map((h) => h.precip_percent || 0);
+    // Guard against overlap: an observation bucket for the current hour would
+    // otherwise sit alongside the forecast entry for the same hour.
+    const firstForecastTs = parseTimestamp(cache.hourly[0]?.start_time);
+    const past = (cache.hourlyPast || []).filter((h) => {
+        const ts = parseTimestamp(h.start_time);
+        return ts != null && (firstForecastTs == null || ts < firstForecastTs);
+    });
+    const future = cache.hourly.slice(0, Math.max(CHART_TOTAL_HOURS - past.length, 12));
+    const rows = past.concat(future);
+
+    const labels = rows.map((h) => formatHM(h.start_time));
+    const temps = rows.map((h) => state.units === 'c' ? fToC(h.temp_f) : h.temp_f);
+    const pops = rows.map((h) => h.precip_percent || 0);
     // null rather than 0 where a provider omits humidity: 0% RH is a real value
     // and plotting a missing reading as zero would invent a dry hour.
-    const humidity = cache.hourly.map((h) => (h.humidity == null ? null : Number(h.humidity)));
+    const humidity = rows.map((h) => (h.humidity == null ? null : Number(h.humidity)));
     const hasHumidity = humidity.some((v) => v != null);
-    const surface = cache.hourly.map((h) => (h.surface_temp_f == null ? null : Number(h.surface_temp_f)));
+    const surface = rows.map((h) => (h.surface_temp_f == null ? null : Number(h.surface_temp_f)));
     const hasSurface = surface.some((v) => v != null);
     const series = state.chartSeries || DEFAULT_CHART_SERIES;
-    const riskBands = series.dogrisk ? buildCanineRiskBands(cache.hourly) : [];
-    const impactMarkers = buildLocationImpactMarkers(cache.hourly.slice(0, 48), getEffectiveAlerts());
-    const dayBoundaries = buildDayBoundaryMarkers(cache.hourly);
+    const riskBands = series.dogrisk ? buildCanineRiskBands(rows) : [];
+    const impactMarkers = buildLocationImpactMarkers(rows.slice(0, CHART_TOTAL_HOURS), getEffectiveAlerts());
+    const dayBoundaries = buildDayBoundaryMarkers(rows);
 
     // Compute fractional index for current time so the "Now" line falls between ticks
     let nowFractionalIndex = null;
     const nowTs = Date.now();
-    const hourlyTs = cache.hourly.map((h) => parseTimestamp(h.start_time));
+    const hourlyTs = rows.map((h) => parseTimestamp(h.start_time));
     const nowAfter = hourlyTs.findIndex((ts) => ts != null && ts > nowTs);
     if (nowAfter > 0) {
         const t0 = hourlyTs[nowAfter - 1];
@@ -3242,7 +3300,7 @@ async function renderHourlyChart(forceFetch = false) {
 
     chartInstance = new Chart(ctx, {
         type: 'line',
-        plugins: [locationImpactPlugin, dayBoundaryPlugin, canineRiskPlugin],
+        plugins: [locationImpactPlugin, dayBoundaryPlugin, canineRiskPlugin, pastRegionPlugin],
         data: {
             labels,
             datasets: [
@@ -3316,6 +3374,7 @@ async function renderHourlyChart(forceFetch = false) {
                     nowIndex: nowFractionalIndex,
                 },
                 canineRiskBands: { bands: riskBands },
+                pastRegion: { pastCount: past.length },
             },
             scales: {
                 x: { ticks: { color: '#4a6278', maxRotation: 0, font: { size: 9 } }, grid: { color: '#1b2537' } },
