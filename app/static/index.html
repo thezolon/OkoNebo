@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
           integrity="sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb"
           crossorigin="anonymous" />
-    <link rel="stylesheet" href="css/style.css?v=9">
+    <link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body>
     <div id="alert-ticker" class="alert-ticker hidden" role="alert" aria-live="assertive" aria-atomic="true">
@@ -209,11 +209,21 @@
             <div class="hourly-section">
                 <div class="hourly-header">
                     <h3>48-Hour Forecast</h3>
-                    <div class="tab-group">
-                        <button id="tab-chart" class="tab-btn tab-active">Chart</button>
-                        <button id="tab-table" class="tab-btn">Table</button>
+                    <div class="hourly-header-right">
+                        <div id="series-toggles" class="series-toggles" role="group" aria-label="Chart series">
+                            <button class="series-chip" type="button" data-series="temp" aria-pressed="true">Temp</button>
+                            <button class="series-chip" type="button" data-series="precip" aria-pressed="true">Precip</button>
+                            <button class="series-chip" type="button" data-series="humidity" aria-pressed="true">Humidity</button>
+                            <button class="series-chip" type="button" data-series="surface" aria-pressed="false" title="Estimated temperature of dark paving in the open">Surface*</button>
+                            <button class="series-chip" type="button" data-series="dogrisk" aria-pressed="false" title="Guidance only: temperature + humidity rule of thumb for dogs outdoors">Dog risk*</button>
+                        </div>
+                        <div class="tab-group">
+                            <button id="tab-chart" class="tab-btn tab-active">Chart</button>
+                            <button id="tab-table" class="tab-btn">Table</button>
+                        </div>
                     </div>
                 </div>
+                <div id="series-note" class="series-note hidden">* Estimated, not measured. Surface = dark paving in the open; Dog risk = temperature + humidity rule of thumb, guidance only.</div>
                 <div id="hourly-chart-wrap" class="chart-wrap">
                     <canvas id="hourly-chart"></canvas>
                 </div>
@@ -463,6 +473,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"
             integrity="sha384-9MhbyIRcBVQiiC7FSd7T38oJNj2Zh+EfxS7/vjhBi4OOT78NlHSnzM31EZRWR1LZ"
             crossorigin="anonymous"></script>
-    <script src="js/app.js?v=12"></script>
+    <script src="js/app.js?v=13"></script>
 </body>
 </html>
