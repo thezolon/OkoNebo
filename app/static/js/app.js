@@ -54,6 +54,7 @@ const cache = {
     forecast: [],
     hourly: [],
     hourlyPast: null,
+    stormIndex: null,
     alerts: [],
     alertsViewport: [],
     firewatch: [],
@@ -1706,39 +1707,28 @@ function sparklineSvg(values, color = '#4a9eff', width = 120, height = 28) {
     `;
 }
 
-function computeStormIndex(current, alerts, pwsData) {
-    let score = 0;
-    const sevWeights = { extreme: 50, severe: 30, moderate: 15, minor: 8, unknown: 4 };
-    (alerts || []).forEach((a) => { score += (sevWeights[alertSevClass(a.severity)] || 0); });
-
-    const nwsgust = toNumber(current?.wind_gust_mph) || toNumber(current?.wind_speed_mph) || 0;
-    const pwsGusts = (pwsData?.stations || []).map((s) => toNumber(s.wind_gust_mph) || toNumber(s.wind_mph) || 0);
-    const maxGust = Math.max(nwsgust, ...pwsGusts, 0);
-    if (maxGust >= 45) score += 35;
-    else if (maxGust >= 35) score += 25;
-    else if (maxGust >= 25) score += 15;
-    else if (maxGust >= 15) score += 8;
-
-    const minPressure = Math.min(
-        toNumber(current?.pressure_inhg) || 99,
-        ...((pwsData?.stations || []).map((s) => toNumber(s.pressure_inhg) || 99)),
-    );
-    if (minPressure < 29.6) score += 20;
-    else if (minPressure < 29.8) score += 12;
-
-    if (score >= 80) return { level: 'extreme', label: 'Extreme' };
-    if (score >= 55) return { level: 'severe', label: 'Severe' };
-    if (score >= 32) return { level: 'elevated', label: 'Elevated' };
-    if (score >= 15) return { level: 'guarded', label: 'Guarded' };
-    return { level: 'low', label: 'Low' };
-}
-
-function renderStormIndex() {
+// Scoring moved to app/storm.py. The client-side version could not see the
+// weather: it read only alert severities, gusts and pressure, so a squall line
+// overhead reported "Storm: Low" while the sidebar displayed "Thunderstorms and
+// Rain" two lines above it. The server has every input and, unlike this file,
+// has test coverage.
+async function renderStormIndex() {
     const el = document.getElementById('storm-index');
     if (!el) return;
-    const idx = computeStormIndex(cache.current, getEffectiveAlerts(), cache.pws);
-    el.className = `storm-index ${idx.level}`;
-    el.textContent = `Storm: ${idx.label}`;
+    try {
+        const idx = await fetchAPIDeduped('/storm-index');
+        if (!idx || !idx.level) return;
+        cache.stormIndex = idx;
+        el.className = `storm-index ${idx.level}`;
+        el.textContent = `Storm: ${idx.label}`;
+        // The old badge explained itself nowhere, which is how it stayed
+        // plausible while being wrong. Now it always states its reasoning.
+        const reasons = Array.isArray(idx.reasons) ? idx.reasons.join('; ') : '';
+        el.title = reasons ? `${reasons}\n\n${idx.basis || ''}`.trim() : (idx.basis || '');
+    } catch (err) {
+        // Leave the previous reading rather than inventing a calm one: showing
+        // "Low" because a fetch failed is the failure mode being fixed.
+    }
 }
 
 function showError(msg) {

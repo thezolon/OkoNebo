@@ -38,6 +38,7 @@ from pywebpush import WebPushException, webpush
 
 from app import weather_client as wc
 from app.astro import compute_astro
+from app import storm
 from app.redaction import install_logging_redaction, redact_text, redact_value
 from app.secure_settings import SecureSettingsStore
 
@@ -2338,6 +2339,42 @@ async def api_forecast():
 )
 async def api_history(hours: int = Query(default=6, ge=1, le=720)):
     return await wc.get_current_history(LAT, LON, hours=hours)
+
+
+@app.get(
+    "/api/storm-index",
+    summary="Local storm activity heuristic",
+    description=(
+        "Coarse summary of local storm activity with the reasons that produced "
+        "it. A heuristic built from this station's readings, alerts affecting "
+        "monitored locations, and the near-term forecast -- not a National "
+        "Weather Service product. Every response states its basis."
+    ),
+    tags=["Weather"],
+)
+async def api_storm_index():
+    try:
+        current = await _current_payload_for_location(LAT, LON)
+    except Exception:
+        current = {}
+    try:
+        alerts = await wc.get_alerts(LAT, LON, USER_AGENT)
+    except Exception:
+        alerts = []
+    try:
+        hourly = await wc.get_hourly(LAT, LON, USER_AGENT)
+    except Exception:
+        hourly = []
+    pws: dict[str, Any] = {}
+    if PROVIDERS.get("pws", {}).get("enabled") and PWS_KEY and PWS_STATIONS:
+        try:
+            pws = await wc.get_pws_observations(PWS_PROVIDER, PWS_STATIONS, PWS_KEY) or {}
+        except Exception as exc:
+            # Logged rather than swallowed: a station that quietly stops
+            # contributing gusts is how the previous index went blind.
+            _log_event("storm_index.pws_failed", None, level="warning", error=redact_text(str(exc)))
+            pws = {}
+    return storm.compute_storm_index(current=current, alerts=alerts, hourly=hourly, pws=pws)
 
 
 @app.get(
