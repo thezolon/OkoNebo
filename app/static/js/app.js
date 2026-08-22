@@ -1236,13 +1236,6 @@ async function refreshViewportAlerts(forceFetch = false) {
     }
 }
 
-function updateAlertViewportCount() {
-    const badge = document.getElementById('alert-count');
-    if (!badge) return;
-    const alerts = _effectiveAlertsInViewport();
-    badge.textContent = alerts.length ? String(alerts.length) : '';
-}
-
 async function renderFireOverlay(forceFetch = false) {
     if (!radarMap) return;
 
@@ -1321,7 +1314,7 @@ function scheduleViewportOverlayRefresh(forceFetch = false) {
     if (viewportOverlayTimer) clearTimeout(viewportOverlayTimer);
     viewportOverlayTimer = setTimeout(async () => {
         await refreshViewportAlerts(forceFetch);
-        updateAlertViewportCount();
+        renderAlertList();
         renderAlertPolygons();
         renderFireWatch(false).catch(() => {
             // Keep map responsive if sidebar firewatch filtering fails.
@@ -1334,8 +1327,6 @@ function scheduleViewportOverlayRefresh(forceFetch = false) {
 
 function renderAlertPolygons() {
     if (!radarMap) return;
-
-    updateAlertViewportCount();
 
     if (alertPolygonsLayer) {
         radarMap.removeLayer(alertPolygonsLayer);
@@ -2418,7 +2409,6 @@ async function returnHomeView() {
     if (!radarMap || !cache.config) return;
     fitMapToAlertCoverage();
     await refreshViewportAlerts(true);
-    updateAlertViewportCount();
     await renderAlerts(false);
     await renderFireWatch(false);
     scheduleViewportOverlayRefresh(true);
@@ -2603,84 +2593,116 @@ async function renderFireWatch(forceFetch = false) {
     }
 }
 
+
+// An alert counts as affecting you only when it is tied to a real monitored
+// location. Viewport sweeps come back tagged with pseudo-locations such as
+// "Viewport SW", which is how two Heat Advisories 300 miles away ended up
+// counted under a heading that reads "ACTIVE ALERTS" beside your own readings.
+function alertAffectsMonitoredLocation(alert) {
+    const locations = Array.isArray(alert?.monitored_locations) ? alert.monitored_locations : [];
+    return locations.some((name) => !String(name).toLowerCase().startsWith('viewport'));
+}
+
+// The list and its count are rendered together, from one array, so they cannot
+// disagree. They previously had two independent writers: renderAlerts owned the
+// list, while updateAlertViewportCount rewrote the number alone on every map
+// pan. Moving the map therefore changed the badge and left the list untouched.
+function renderAlertList() {
+    const container = document.getElementById('alerts-container');
+    const badge = document.getElementById('alert-count');
+    if (!container) return [];
+
+    const displayed = _effectiveAlertsInViewport().filter((a) => {
+        if (state.alertFilter === 'all') return true;
+        return alertSevClass(a.severity) === state.alertFilter;
+    });
+
+    // Count what is actually shown. The old badge was set before the severity
+    // filter ran, so it could exceed the number of cards even in one pass.
+    if (badge) badge.textContent = displayed.length ? String(displayed.length) : '';
+
+    container.innerHTML = '';
+    if (displayed.length === 0) {
+        container.innerHTML = '<div class="no-alerts">No active alerts</div>';
+        return displayed;
+    }
+
+    // Alerts affecting a monitored location lead; nearby ones follow, marked.
+    const ordered = [
+        ...displayed.filter(alertAffectsMonitoredLocation),
+        ...displayed.filter((a) => !alertAffectsMonitoredLocation(a)),
+    ];
+
+    ordered.forEach((alert) => container.appendChild(buildAlertCard(alert)));
+    return displayed;
+}
+
+function buildAlertCard(alert) {
+    const card = document.createElement('div');
+    card.className = `alert-card ${alertSevClass(alert.severity)}`;
+    // Clicking a card is the only way to read a warning past its clamp or zoom
+    // the map to it. As a bare div with a click handler that was unreachable by
+    // keyboard entirely -- so a keyboard or switch user could not open the body
+    // of a tornado warning.
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-expanded', 'false');
+    card.setAttribute('aria-label', `${alert.event || alert.headline || 'Alert'}. Activate to expand and locate on map.`);
+    if (alert.synthetic) card.classList.add('synthetic');
+    const monitoredLocations = Array.isArray(alert.monitored_locations) ? alert.monitored_locations : [];
+    card.innerHTML = `
+        <div class="alert-event">${escapeHtml(alert.event || alert.headline || 'Alert')}</div>
+        <div class="alert-meta">
+            <span>${escapeHtml(alert.severity || '')}</span>
+            <span>${escapeHtml(alert.urgency || '')}</span>
+            <span>${alert.expires ? `Expires ${formatTime(alert.expires)}` : ''}</span>
+        </div>
+        ${monitoredLocations.length ? `<div class="alert-coverage">Affects ${monitoredLocations.map(escapeHtml).join(' · ')}</div>` : ''}
+        ${alert.synthetic ? '<div class="alert-test-pill">Test polygon</div>' : ''}
+        ${alert.instruction ? `<div class="alert-instruction">${escapeHtml(alert.instruction)}</div>` : ''}
+        ${alert.description ? `<div class="alert-desc">${escapeHtml(alert.description)}</div>` : ''}
+    `;
+    const activateCard = () => {
+        const expanded = card.classList.toggle('expanded');
+        card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (alert.geometry) {
+            if (!state.showAlertPolygons) {
+                state.showAlertPolygons = true;
+                const toggle = document.getElementById('alert-polygons-toggle');
+                if (toggle) toggle.checked = true;
+                renderAlertPolygons();
+            }
+            zoomToAlert(alert);
+        }
+    };
+    card.addEventListener('click', activateCard);
+    card.addEventListener('keydown', (event) => {
+        // Enter and Space are what role="button" promises the user.
+        if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+            event.preventDefault();
+            activateCard();
+        }
+    });
+
+    // Nearby-but-not-yours alerts are labelled rather than hidden, so a count
+    // of two can never again mean two things you cannot find.
+    if (!alertAffectsMonitoredLocation(alert)) {
+        const marker = document.createElement('div');
+        marker.className = 'alert-inview';
+        marker.textContent = 'In map view only';
+        card.appendChild(marker);
+    }
+    return card;
+}
+
 async function renderAlerts(forceFetch = false) {
     if (forceFetch || cache.alerts.length === 0) {
         const payload = await fetchAPIDeduped('/alerts');
         cache.alerts = Array.isArray(payload) ? payload : (cache.alerts || []);
     }
 
-    const container = document.getElementById('alerts-container');
-    container.innerHTML = '';
+    renderAlertList();
 
-    const effectiveAlerts = _effectiveAlertsInViewport();
-
-    const filtered = effectiveAlerts.filter((a) => {
-        if (state.alertFilter === 'all') return true;
-        return alertSevClass(a.severity) === state.alertFilter;
-    });
-
-    document.getElementById('alert-count').textContent = effectiveAlerts.length ? String(effectiveAlerts.length) : '';
-
-    if (filtered.length === 0) {
-        container.innerHTML = '<div class="no-alerts">No active alerts</div>';
-        updateAlertTicker(getEffectiveAlerts());
-        renderAlertPolygons();
-        renderStormIndex();
-        renderSourceAges();
-        renderTimeline();
-        return;
-    }
-
-    filtered.forEach((alert) => {
-        const card = document.createElement('div');
-        card.className = `alert-card ${alertSevClass(alert.severity)}`;
-        // Clicking a card is the only way to read a warning past its clamp or zoom
-        // the map to it. As a bare div with a click handler that was unreachable by
-        // keyboard entirely -- so a keyboard or switch user could not open the body
-        // of a tornado warning.
-        card.tabIndex = 0;
-        card.setAttribute('role', 'button');
-        card.setAttribute('aria-expanded', 'false');
-        card.setAttribute('aria-label', `${alert.event || alert.headline || 'Alert'}. Activate to expand and locate on map.`);
-        if (alert.synthetic) card.classList.add('synthetic');
-        const monitoredLocations = Array.isArray(alert.monitored_locations) ? alert.monitored_locations : [];
-        card.innerHTML = `
-            <div class="alert-event">${escapeHtml(alert.event || alert.headline || 'Alert')}</div>
-            <div class="alert-meta">
-                <span>${escapeHtml(alert.severity || '')}</span>
-                <span>${escapeHtml(alert.urgency || '')}</span>
-                <span>${alert.expires ? `Expires ${formatTime(alert.expires)}` : ''}</span>
-            </div>
-            ${monitoredLocations.length ? `<div class="alert-coverage">Affects ${monitoredLocations.map(escapeHtml).join(' · ')}</div>` : ''}
-            ${alert.synthetic ? '<div class="alert-test-pill">Test polygon</div>' : ''}
-            ${alert.instruction ? `<div class="alert-instruction">${escapeHtml(alert.instruction)}</div>` : ''}
-            ${alert.description ? `<div class="alert-desc">${escapeHtml(alert.description)}</div>` : ''}
-        `;
-        const activateCard = () => {
-            const expanded = card.classList.toggle('expanded');
-            card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-            if (alert.geometry) {
-                if (!state.showAlertPolygons) {
-                    state.showAlertPolygons = true;
-                    const toggle = document.getElementById('alert-polygons-toggle');
-                    if (toggle) toggle.checked = true;
-                    renderAlertPolygons();
-                }
-                zoomToAlert(alert);
-            }
-        };
-        card.addEventListener('click', activateCard);
-        card.addEventListener('keydown', (event) => {
-            // Enter and Space are what role="button" promises the user.
-            if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
-                event.preventDefault();
-                activateCard();
-            }
-        });
-        container.appendChild(card);
-    });
-
-    // Keep home/work safety stream prioritized in ticker regardless of viewport.
     updateAlertTicker(getEffectiveAlerts());
     renderAlertPolygons();
     renderFireOverlay(false).catch(() => {});
@@ -3747,8 +3769,9 @@ async function initRadar() {
     scheduleViewportOverlayRefresh(false);
     if (!radarMap.__viewportOverlayBound) {
         radarMap.on('moveend zoomend', () => {
-            // Viewport-scoped counts should update regardless of overlay selection.
-            updateAlertViewportCount();
+            // Pan and zoom change which alerts are in view, so the list and its
+            // count must both be recomputed -- not the count alone.
+            renderAlertList();
             renderFireWatch(false).catch(() => {
                 // Keep map interactions smooth if sidebar update fails.
             });
@@ -4363,7 +4386,6 @@ function setupControls() {
         el.addEventListener('change', () => {
             state.alertLayerFilters[key] = el.checked;
             renderAlerts(false);
-            updateAlertViewportCount();
             renderAlertPolygons();
         });
     });

@@ -1779,3 +1779,15 @@ html.admin-page body.admin-page {
     color: var(--t3);
     letter-spacing: 0.02em;
 }
+
+/* An alert that is on the map but not over a monitored location. Labelled
+   rather than hidden: the sidebar count once read 2 while the list showed
+   nothing, and the answer turned out to be two Heat Advisories 300 miles away
+   in the corners of the view. */
+.alert-inview {
+    margin-top: 6px;
+    font-size: 9px;
+    color: var(--t3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
